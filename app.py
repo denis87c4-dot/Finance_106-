@@ -176,8 +176,8 @@ elif aba == "Cadastro":
 elif aba == "Financial Summary":
     st.subheader("📊 Financial Summary")
     st.markdown("Consolidated view of **Income**, **Expenses**, **Cash Flow**, and **Cumulative Balance**.")
-    # ... (resto igual ao seu código original)
+    # (mantém igual ao seu código original)
 
 # ==================== 4. CARTÕES ====================
 elif aba == "Cartões":
-    st.subheader("💳 Gerenciamento de Cartões / Cont
+    st.subheader("💳 Gerenciamento de Cartões / Contas")
