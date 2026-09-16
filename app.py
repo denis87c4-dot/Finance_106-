@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import os
@@ -105,8 +104,29 @@ elif aba == "Cadastro":
             tipo = st.selectbox("Tipo", ["Receita", "Despesa", "Transferência"])
             status = st.selectbox("Status", ["Efetivado", "Budget"])
             descricao = st.text_input("Descrição *")
-            categoria = st.selectbox("Categoria", st.session_state.categorias)
-            conta = st.text_input("Conta / Cartão de Origem", value="Conta Principal")
+            
+            # --- CATEGORIA COM OPÇÃO DE ADICIONAR NOVA ---
+            lista_cat_opcao = st.session_state.categorias + ["+ Adicionar nova categoria..."]
+            cat_escolhida = st.selectbox("Categoria", lista_cat_opcao)
+            categoria_final = cat_escolhida
+            
+            nova_cat_digitada = ""
+            if cat_escolhida == "+ Adicionar nova categoria...":
+                nova_cat_digitada = st.text_input("Digite o nome da nova categoria:")
+
+            # --- CONTA / CARTÃO DE ORIGEM COM OPÇÃO DE ADICIONAR ---
+            contas_base = ["Conta Principal", "Nubank", "Carteira"]
+            if not st.session_state.cartoes.empty:
+                for c_nome in st.session_state.cartoes["Nome"].tolist():
+                    if c_nome not in contas_base:
+                        contas_base.append(c_nome)
+            
+            conta_opcao = st.selectbox("Conta / Cartão de Origem", contas_base + ["+ Adicionar nova conta..."])
+            conta_final = conta_opcao
+            nova_conta_digitada = ""
+            if conta_opcao == "+ Adicionar nova conta...":
+                nova_conta_digitada = st.text_input("Digite o nome da nova Conta/Banco:")
+
         with col2:
             conta_destino = st.text_input("Conta Destino (Apenas Transferências)", value="")
             valor = st.number_input("Valor (R$) *", min_value=0.0, step=0.01)
@@ -118,6 +138,22 @@ elif aba == "Cadastro":
         submit = st.form_submit_button("Salvar Lançamento")
 
         if submit:
+            # Tratamento da nova categoria se inserida
+            if cat_escolhida == "+ Adicionar nova categoria...":
+                if nova_cat_digitada.strip() != "":
+                    categoria_final = nova_cat_digitada.strip()
+                    if categoria_final not in st.session_state.categorias:
+                        st.session_state.categorias.append(categoria_final)
+                else:
+                    st.error("⚠️ Digite o nome da nova categoria.")
+
+            # Tratamento da nova conta se inserida
+            if conta_opcao == "+ Adicionar nova conta...":
+                if nova_conta_digitada.strip() != "":
+                    conta_final = nova_conta_digitada.strip()
+                else:
+                    st.error("⚠️ Digite o nome da nova conta.")
+
             if not descricao.strip() or valor <= 0:
                 st.error("⚠️ Preencha a descrição e um valor maior que zero.")
             else:
@@ -128,7 +164,7 @@ elif aba == "Cadastro":
                     desc_parcela = f"{descricao} ({i+1}/{num_parcelas})" if num_parcelas > 1 else descricao
                     
                     registros.append([
-                        str(tipo), str(status), str(desc_parcela), str(categoria), str(conta), str(conta_destino),
+                        str(tipo), str(status), str(desc_parcela), str(categoria_final), str(conta_final), str(conta_destino),
                         float(valor_parcela), data_parcela.strftime("%Y-%m-%d"), str(f"{i+1}/{num_parcelas}"), 
                         "Parcelado", str(forma_pagamento), str(observacoes)
                     ])
@@ -173,18 +209,15 @@ elif aba == "Financial Summary":
 
         pivot = pivot.sort_values("AnoMes").reset_index(drop=True)
         
-        # Lógica rigorosa: Income - Expense
         pivot["Cash Flow"] = pivot["Income"] - pivot["Expense"]
         pivot["Cumulative"] = pivot["Cash Flow"].cumsum()
         pivot["Month"] = pd.PeriodIndex(pivot["AnoMes"], freq="M").strftime("%m/%Y")
 
         pivot_exibicao = pivot[["Month", "Income", "Expense", "Cash Flow", "Cumulative"]].copy()
         
-        # Formatação individual para string de moeda
         for col in ["Income", "Expense", "Cash Flow", "Cumulative"]:
             pivot_exibicao[col] = pivot_exibicao[col].apply(formatar_moeda_br)
 
-        # Aplicação perfeita do estilo de vermelhos em negativos nas colunas de resultado
         pivot_estilizado = aplicar_estilo_tabela(
             pivot_exibicao.set_index("Month").style, 
             subset=["Cash Flow", "Cumulative"]
