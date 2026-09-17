@@ -46,8 +46,8 @@ elif aba == "Cadastro":
     
     with tab_cat:
         st.subheader("Gerenciar Categorias")
-        nova_cat = st.text_input("Nova Categoria", key="input_nova_cat")
-        if st.button("Adicionar Categoria"):
+        nova_cat = st.text_input("Nova Categoria", key="input_nova_cat_tab")
+        if st.button("Adicionar Categoria", key="btn_add_cat"):
             if nova_cat and nova_cat not in st.session_state.categorias:
                 st.session_state.categorias.append(nova_cat)
                 st.success(f"Categoria '{nova_cat}' adicionada com sucesso!")
@@ -58,8 +58,8 @@ elif aba == "Cadastro":
 
     with tab_acc:
         st.subheader("Gerenciar Contas")
-        nova_conta = st.text_input("Nova Conta (Account)", key="input_nova_acc")
-        if st.button("Adicionar Conta"):
+        nova_conta = st.text_input("Nova Conta (Account)", key="input_nova_acc_tab")
+        if st.button("Adicionar Conta", key="btn_add_acc"):
             if nova_conta and nova_conta not in st.session_state.contas:
                 st.session_state.contas.append(nova_conta)
                 st.success(f"Conta '{nova_conta}' adicionada com sucesso!")
@@ -72,50 +72,46 @@ elif aba == "Cadastro":
 elif aba == "Lançamentos":
     st.title("💵 Registrar Lançamento")
     
-    tipo = st.selectbox("Tipo de Lançamento", ["Receita", "Despesa", "Transferência"])
+    tipo = st.selectbox("Tipo de Lançamento", ["Receita", "Despesa", "Transferência"], key="tipo_lancamento")
     
     col_c1, col_c2 = st.columns(2)
     with col_c1:
-        conta = st.selectbox("Conta (Account)", st.session_state.contas)
+        conta = st.selectbox("Conta (Account)", st.session_state.contas, key="conta_origem")
 
     conta_destino = "-"
     if tipo == "Transferência":
         with col_c2:
-            conta_destino = st.selectbox("Conta de Destino", st.session_state.contas)
+            conta_destino = st.selectbox("Conta de Destino", st.session_state.contas, key="conta_destino")
 
     # Categoria com opção de adicionar na mesma hora
     cat_lista = ["+ Adicionar nova categoria..."] + st.session_state.categorias
-    cat_escolha = st.selectbox("Categoria", cat_lista)
+    cat_escolha = st.selectbox("Categoria", cat_lista, key="select_categoria")
     
     categoria = cat_escolha
     if cat_escolha == "+ Adicionar nova categoria...":
-        categoria_nova = st.text_input("Digite o nome da nova categoria:")
-        if categoria_nova:
-            categoria = categoria_nova
+        categoria = st.text_input("Digite o nome da nova categoria:", key="input_cat_dinamica")
 
-    descricao = st.text_input("Descrição")
-    valor = st.number_input("Valor (R$)", min_value=0.0, step=10.0)
-    data = st.date_input("Data Inicial")
+    descricao = st.text_input("Descrição", key="desc_lancamento")
+    valor = st.number_input("Valor (R$)", min_value=0.0, step=10.0, key="valor_lancamento")
+    data = st.date_input("Data Inicial", key="data_lancamento")
     
     # Linha do Parcelamento
     st.markdown("---")
     st.subheader("Parcelamento")
     
-    col_p1, col_p2 = st.columns(2)
-    with col_p1:
-        parcelas = st.number_input("Número de Parcelas", min_value=1, max_value=120, value=1, step=1)
+    parcelas = st.number_input("Número de Parcelas", min_value=1, max_value=120, value=1, step=1, key="num_parcelas")
     
     modo_valor = "Integral"
     if parcelas > 1:
-        with col_p2:
-            modo_valor = st.radio(
-                "Como tratar o valor nas parcelas?", 
-                ["Dividir valor total pelas parcelas", "Replicar valor integral em cada parcela"]
-            )
+        modo_valor = st.radio(
+            "Como tratar o valor nas parcelas?", 
+            ["Dividir valor total pelas parcelas", "Replicar valor integral em cada parcela"],
+            key="modo_valor_parcelas"
+        )
 
     st.markdown("---")
-    if st.button("Salvar Lançamento", type="primary"):
-        # Salva automaticamente a nova categoria na session_state se foi criada agora
+    if st.button("Salvar Lançamento", type="primary", key="btn_salvar_lancamento"):
+        # Se digitou uma nova categoria, salva automaticamente na session_state
         if cat_escolha == "+ Adicionar nova categoria..." and categoria and categoria not in st.session_state.categorias:
             st.session_state.categorias.append(categoria)
 
