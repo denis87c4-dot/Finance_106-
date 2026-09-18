@@ -16,6 +16,7 @@ aba = st.sidebar.radio(
         "Dashboard",
         "Cadastro",
         "Cadastro de Categorias e Contas",
+        "Cartões de Crédito",
         "Backup & Segurança",
     ],
 )
@@ -51,6 +52,22 @@ if "contas" not in st.session_state:
       "Carteira",
       "Cartão de Crédito",
       "Poupança",
+  ]
+
+if "cartoes" not in st.session_state:
+  st.session_state.cartoes = [
+      {
+          "Nome": "Nubank",
+          "Limite": 5000.0,
+          "Fechamento": 5,
+          "Vencimento": 12,
+      },
+      {
+          "Nome": "Inter",
+          "Limite": 3000.0,
+          "Fechamento": 10,
+          "Vencimento": 17,
+      },
   ]
 
 
@@ -280,6 +297,149 @@ elif aba == "Cadastro de Categorias e Contas":
     st.write("Contas atuais:", st.session_state.contas)
 
 
+# ==================== CARTÕES DE CRÉDITO ====================
+elif aba == "Cartões de Crédito":
+  st.title("💳 Gestão de Cartões de Crédito")
+  st.write(
+      "Cadastre seus cartões, acompanhe limites e visualize faturas em"
+      " aberto baseadas nos lançamentos vinculados."
+  )
+
+  tab_gerenciar, tab_faturas = st.tabs(
+      ["📝 Cadastrar / Meus Cartões", "📊 Faturas & Limites"]
+  )
+
+  with tab_gerenciar:
+    st.subheader("Cadastrar Novo Cartão")
+    with st.form("form_cad_cartao"):
+      col_c1, col_c2 = st.columns(2)
+      with col_c1:
+        nome_cartao = st.text_input(
+            "Nome do Cartão", placeholder="Ex: Visa Platinum, Mastercard..."
+        )
+        limite_cartao = st.number_input(
+            "Limite Total (R$)", min_value=0.0, step=100.0, format="%.2f"
+        )
+      with col_c2:
+        dia_fechamento = st.number_input(
+            "Dia de Fechamento da Fatura",
+            min_value=1,
+            max_value=31,
+            value=1,
+            step=1,
+        )
+        dia_vencimento = st.number_input(
+            "Dia de Vencimento da Fatura",
+            min_value=1,
+            max_value=31,
+            value=10,
+            step=1,
+        )
+
+      submitted_cartao = st.form_submit_button(
+          "💾 Salvar Cartão", use_container_width=True
+      )
+      if submitted_cartao:
+        if not nome_cartao:
+          st.error("O nome do cartão não pode estar vazio.")
+        elif limite_cartao <= 0:
+          st.error("O limite deve ser maior que zero.")
+        else:
+          nomes_existentes = [c["Nome"] for c in st.session_state.cartoes]
+          if nome_cartao in nomes_existentes:
+            st.warning("Já existe um cartão cadastrado com esse nome.")
+          else:
+            st.session_state.cartoes.append({
+                "Nome": nome_cartao,
+                "Limite": limite_cartao,
+                "Fechamento": int(dia_fechamento),
+                "Vencimento": int(dia_vencimento),
+            })
+            if nome_cartao not in st.session_state.contas:
+              st.session_state.contas.append(nome_cartao)
+            st.success(f"Cartão '{nome_cartao}' cadastrado com sucesso!")
+            st.rerun()
+
+    st.markdown("---")
+    st.subheader("Cartões Cadastrados")
+    if st.session_state.cartoes:
+      df_cartoes = pd.DataFrame(st.session_state.cartoes)
+      st.dataframe(df_cartoes, use_container_width=True)
+    else:
+      st.info("Nenhum cartão cadastrado.")
+
+  with tab_faturas:
+    st.subheader("Visão Geral de Faturas e Limites")
+
+    if not st.session_state.cartoes:
+      st.warning(
+          "Cadastre pelo menos um cartão na aba anterior para ver as faturas."
+      )
+    else:
+      nomes_cartoes = [c["Nome"] for c in st.session_state.cartoes]
+      cartao_selecionado = st.selectbox(
+          "Selecione o Cartão", nomes_cartoes, key="select_cartao_detalhe"
+      )
+
+      dados_cartao = next(
+          c for c in st.session_state.cartoes if c["Nome"] == cartao_selecionado
+      )
+      limite_total = dados_cartao["Limite"]
+
+      df_lanc = st.session_state.lancamentos
+      if not df_lanc.empty:
+        df_cartao_lanc = df_lanc[
+            (df_lanc["Conta"] == cartao_selecionado)
+            | (df_lanc["Conta Destino"] == cartao_selecionado)
+        ]
+      else:
+        df_cartao_lanc = pd.DataFrame()
+
+      if not df_cartao_lanc.empty:
+        total_gasto = df_cartao_lanc[
+            df_cartao_lanc["Tipo"] == "Despesa"
+        ]["Valor"].sum()
+        total_pago = df_cartao_lanc[
+            df_cartao_lanc["Tipo"] == "Receita"
+        ]["Valor"].sum()
+        comprometido = total_gasto - total_pago
+      else:
+        comprometido = 0.0
+
+      limite_disponivel = limite_total - comprometido
+
+      col_m1, col_m2, col_m3 = st.columns(3)
+      with col_m1:
+        st.metric("Limite Total", f"R$ {limite_total:,.2f}")
+      with col_m2:
+        st.metric(
+            "Fatura / Comprometido Atual",
+            f"R$ {comprometido:,.2f}",
+            delta=f"Vencimento dia {dados_cartao['Vencimento']}",
+            delta_color="inverse",
+        )
+      with col_m3:
+        st.metric(
+            "Limite Disponível",
+            f"R$ {limite_disponivel:,.2f}",
+            delta=(
+                "Saudável" if limite_disponivel >= 0 else "Limite Ultrapassado!"
+            ),
+        )
+
+      st.markdown("---")
+      st.markdown(
+          f"### Lançamentos Vinculados ao Cartão: **{cartao_selecionado}**"
+      )
+      if not df_cartao_lanc.empty:
+        st.dataframe(df_cartao_lanc, use_container_width=True)
+      else:
+        st.info(
+            f"Nenhum lançamento encontrado para o cartão"
+            f" '{cartao_selecionado}'."
+        )
+
+
 # ==================== BACKUP & SEGURANÇA ====================
 elif aba == "Backup & Segurança":
   st.title("🛡️ Central de Backup e Segurança")
@@ -304,6 +464,7 @@ elif aba == "Backup & Segurança":
         "lancamentos": st.session_state.lancamentos.to_dict(orient="records"),
         "categorias": st.session_state.categorias,
         "contas": st.session_state.contas,
+        "cartoes": st.session_state.cartoes,
     }
     json_str = json.dumps(dados_dict, ensure_ascii=False, indent=4, default=str)
 
@@ -340,6 +501,7 @@ elif aba == "Backup & Segurança":
         meta_dict = {
             "categorias": st.session_state.categorias,
             "contas": st.session_state.contas,
+            "cartoes": st.session_state.cartoes,
         }
         zip_file.writestr(
             "metadados.json",
@@ -356,7 +518,7 @@ elif aba == "Backup & Segurança":
       )
       st.success("Pacote ZIP gerado com sucesso!")
 
-  # 3. IMPORTAÇÃO MULTI-FORMATO (AGORA COM SUPORTE A ZIP)
+  # 3. IMPORTAÇÃO MULTI-FORMATO
   with tab_imp:
     st.subheader("Importar Dados (ZIP, JSON, CSV ou Excel)")
     st.write(
@@ -387,6 +549,8 @@ elif aba == "Backup & Segurança":
                   st.session_state.categorias = meta_data["categorias"]
                 if "contas" in meta_data:
                   st.session_state.contas = meta_data["contas"]
+                if "cartoes" in meta_data:
+                  st.session_state.cartoes = meta_data["cartoes"]
 
           st.success("Backup ZIP importado e restaurado com sucesso!")
 
@@ -400,6 +564,8 @@ elif aba == "Backup & Segurança":
             st.session_state.categorias = conteudo["categorias"]
           if "contas" in conteudo:
             st.session_state.contas = conteudo["contas"]
+          if "cartoes" in conteudo:
+            st.session_state.cartoes = conteudo["cartoes"]
           st.success("Backup JSON importado e restaurado com sucesso!")
 
         elif extensao == "csv":
@@ -439,6 +605,7 @@ elif aba == "Backup & Segurança":
             ),
             "categorias": st.session_state.categorias,
             "contas": st.session_state.contas,
+            "cartoes": st.session_state.cartoes,
         }
         with open("meu_banco.json", "w", encoding="utf-8") as f:
           json.dump(dados_locais, f, ensure_ascii=False, indent=4, default=str)
@@ -454,6 +621,8 @@ elif aba == "Backup & Segurança":
             )
             st.session_state.categorias = dados_locais["categorias"]
             st.session_state.contas = dados_locais["contas"]
+            if "cartoes" in dados_locais:
+              st.session_state.cartoes = dados_locais["cartoes"]
           st.success("Dados carregados com sucesso do disco local!")
           st.rerun()
         except FileNotFoundError:
