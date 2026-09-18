@@ -1,17 +1,26 @@
+import io
+import json
+import zipfile
 import pandas as pd
 import streamlit as st
 
 # Configuração da página
-st.set_page_config(page_title="Fluxo Básico", page_icon="💰", layout="wide")
+st.set_page_config(
+    page_title="Fluxo Financeiro Profissional", page_icon="💰", layout="wide"
+)
 
 # ==================== NAVEGAÇÃO LATERAL ====================
-# Alterado a ordem e os nomes das abas conforme solicitado
 aba = st.sidebar.radio(
-    "Navegação", ["Dashboard", "Cadastro", "Cadastro de Categorias e Contas"]
+    "Navegação",
+    [
+        "Dashboard",
+        "Cadastro",
+        "Cadastro de Categorias e Contas",
+        "Backup & Segurança",
+    ],
 )
 
 # ==================== ESTADOS DA SESSÃO ====================
-# Base de dados em memória para Lançamentos
 if "lancamentos" not in st.session_state:
   st.session_state.lancamentos = pd.DataFrame(
       columns=[
@@ -27,7 +36,6 @@ if "lancamentos" not in st.session_state:
       ]
   )
 
-# Base em memória para Categorias
 if "categorias" not in st.session_state:
   st.session_state.categorias = [
       "Alimentação",
@@ -37,7 +45,6 @@ if "categorias" not in st.session_state:
       "Lazer",
   ]
 
-# Base em memória para Contas
 if "contas" not in st.session_state:
   st.session_state.contas = [
       "Conta Corrente",
@@ -69,14 +76,13 @@ if aba == "Dashboard":
     st.info("Nenhum lançamento registrado ainda.")
 
 
-# ==================== CADASTRO (ANTIGA TELA DE LANÇAMENTOS) ====================
+# ==================== CADASTRO (LANÇAMENTOS) ====================
 elif aba == "Cadastro":
   st.title("💵 Registrar Lançamento")
 
   tipo = st.selectbox(
       "Tipo de Lançamento", ["Receita", "Despesa", "Transferência"]
   )
-
   st.markdown("---")
 
   col_origem, col_dest = st.columns(2)
@@ -137,7 +143,6 @@ elif aba == "Cadastro":
     categoria = "Transferência"
 
   st.markdown("---")
-
   descricao = st.text_input(
       "Descrição", placeholder="Ex: Supermercado, Aluguel, Salário..."
   )
@@ -169,7 +174,6 @@ elif aba == "Cadastro":
                   "Replicar (Valor integral por parcela)",
               ],
           )
-
         valor_parcela_calc = (
             valor / parcelas if "Dividir" in modo_valor else valor
         )
@@ -201,15 +205,13 @@ elif aba == "Cadastro":
         st.error(erro)
     else:
       novos_registros = []
-
       for i in range(parcelas):
         data_parcela = pd.to_datetime(data) + pd.DateOffset(months=i)
-
-        if parcelas > 1 and "Dividir" in modo_valor:
-          valor_final = valor / parcelas
-        else:
-          valor_final = valor
-
+        valor_final = (
+            (valor / parcelas)
+            if (parcelas > 1 and "Dividir" in modo_valor)
+            else valor
+        )
         desc_formatada = (
             f"{descricao} ({i+1}/{parcelas})" if parcelas > 1 else descricao
         )
@@ -241,7 +243,6 @@ elif aba == "Cadastro":
               "Modo Valor",
           ],
       )
-
       st.session_state.lancamentos = pd.concat(
           [st.session_state.lancamentos, df_novos], ignore_index=True
       )
@@ -254,7 +255,6 @@ elif aba == "Cadastro":
 # ==================== CADASTRO DE CATEGORIAS E CONTAS ====================
 elif aba == "Cadastro de Categorias e Contas":
   st.title("📝 Cadastro Geral")
-
   tab_cat, tab_acc = st.tabs(["Categorias", "Contas (Accounts)"])
 
   with tab_cat:
@@ -266,7 +266,6 @@ elif aba == "Cadastro de Categorias e Contas":
         st.success(f"Categoria '{nova_cat}' adicionada com sucesso!")
       else:
         st.warning("Insira uma categoria válida ou que não exista.")
-
     st.write("Categorias atuais:", st.session_state.categorias)
 
   with tab_acc:
@@ -278,5 +277,184 @@ elif aba == "Cadastro de Categorias e Contas":
         st.success(f"Conta '{nova_conta}' adicionada com sucesso!")
       else:
         st.warning("Insira uma conta válida ou que não exista.")
-
     st.write("Contas atuais:", st.session_state.contas)
+
+
+# ==================== BACKUP & SEGURANÇA (NOVA ABA PROFISSIONAL) ====================
+elif aba == "Backup & Segurança":
+  st.title("🛡️ Central de Backup e Segurança")
+  st.write(
+      "Gerencie cópias de segurança dos seus dados financeiros com total"
+      " flexibilidade."
+  )
+
+  tab_exp, tab_zip, tab_imp, tab_loc = st.tabs(
+      [
+          "📤 Exportar Dados",
+          "📦 Backup ZIP",
+          "📥 Importar Multi-formato",
+          "💾 Persistência Local",
+      ]
+  )
+
+  # 1. EXPORTAR DADOS (JSON / CSV)
+  with tab_exp:
+    st.subheader("Exportação Rápida")
+    st.write(
+        "Baixe um arquivo consolidado contendo todas as transações, contas e"
+        " categorias."
+    )
+
+    # Prepara JSON State
+    dados_dict = {
+        "lancamentos": st.session_state.lancamentos.to_dict(orient="records"),
+        "categorias": st.session_state.categorias,
+        "contas": st.session_state.contas,
+    }
+    json_str = json.dumps(dados_dict, ensure_ascii=False, indent=4, default=str)
+
+    st.download_button(
+        label="📥 Baixar Backup Completo (.json)",
+        data=json_str,
+        file_name="backup_financeiro.json",
+        mime="application/json",
+        use_container_width=True,
+    )
+
+    st.markdown("---")
+    st.subheader("Exportar Lançamentos (CSV)")
+    csv_data = st.session_state.lancamentos.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="📊 Baixar Apenas Lançamentos (.csv)",
+        data=csv_data,
+        file_name="lancamentos.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+
+  # 2. BACKUP ZIP
+  with tab_zip:
+    st.subheader("Pacote de Segurança Compactado (.zip)")
+    st.write(
+        "Gera um arquivo ZIP contendo múltiplos arquivos separados (CSV de"
+        " lançamentos, JSON de categorias e contas)."
+    )
+
+    if st.button(" gerar Arquivo ZIP de Backup", use_container_width=True):
+      zip_buffer = io.BytesIO()
+      with zipfile.ZipFile(
+          zip_buffer, "w", zipfile.ZIP_DEFLATED
+      ) as zip_file:
+        # Adiciona lançamentos em CSV
+        zip_file.writestr(
+            "lancamentos.csv",
+            st.session_state.lancamentos.to_csv(index=False).encode("utf-8"),
+        )
+        # Adiciona metadados em JSON
+        meta_dict = {
+            "categorias": st.session_state.categorias,
+            "contas": st.session_state.contas,
+        }
+        zip_file.writestr(
+            "metadados.json",
+            json.dumps(meta_dict, ensure_ascii=False, indent=4),
+        )
+
+      zip_buffer.seek(0)
+      st.download_button(
+          label="📦 Baixar Pacote ZIP Seguro",
+          data=zip_buffer,
+          file_name="backup_completo_seguro.zip",
+          mime="application/zip",
+          use_container_width=True,
+      )
+      st.success("Pacote ZIP gerado com sucesso!")
+
+  # 3. IMPORTAÇÃO MULTI-FORMATO
+  with tab_imp:
+    st.subheader("Importar Dados (JSON, CSV ou Excel)")
+    st.write(
+        "Faça upload de arquivos de backup anteriores para restaurar o seu"
+        " sistema."
+    )
+
+    arquivo_subido = st.file_uploader(
+        "Escolha o arquivo de backup", type=["json", "csv", "xlsx"]
+    )
+
+    if arquivo_subido is not None:
+      extensao = arquivo_subido.name.split(".")[-1].lower()
+
+      try:
+        if extensao == "json":
+          conteudo = json.load(arquivo_subido)
+          if "lancamentos" in conteudo:
+            st.session_state.lancamentos = pd.DataFrame(
+                conteudo["lancamentos"]
+            )
+          if "categorias" in conteudo:
+            st.session_state.categorias = conteudo["categorias"]
+          if "contas" in conteudo:
+            st.session_state.contas = conteudo["contas"]
+          st.success("Backup JSON importado e restaurado com sucesso!")
+
+        elif extensao == "csv":
+          df_importado = pd.read_csv(arquivo_subido)
+          st.session_state.lancamentos = pd.concat(
+              [st.session_state.lancamentos, df_importado], ignore_index=True
+          )
+          st.success("Lançamentos do CSV adicionados com sucesso!")
+
+        elif extensao in ["xlsx", "xls"]:
+          df_importado = pd.read_excel(arquivo_subido)
+          st.session_state.lancamentos = pd.concat(
+              [st.session_state.lancamentos, df_importado], ignore_index=True
+          )
+          st.success("Lançamentos do Excel adicionados com sucesso!")
+
+        st.rerun()
+      except Exception as e:
+        st.error(f"Erro ao processar o arquivo: {e}")
+
+  # 4. PERSISTÊNCIA LOCAL (DISCO)
+  with tab_loc:
+    st.subheader("Backup Automático no Servidor / Máquina Local")
+    st.write(
+        "Salva o estado atual diretamente em um arquivo fixo (`meu_banco.json`)"
+        " na pasta do sistema, evitando que você precise baixar e reenviar o"
+        " arquivo toda vez."
+    )
+
+    col_l1, col_l2 = st.columns(2)
+
+    with col_l1:
+      if st.button("💾 Salvar no Disco Local", use_container_width=True):
+        dados_locais = {
+            "lancamentos": st.session_state.lancamentos.to_dict(
+                orient="records"
+            ),
+            "categorias": st.session_state.categorias,
+            "contas": st.session_state.contas,
+        }
+        with open("meu_banco.json", "w", encoding="utf-8") as f:
+          json.dump(dados_locais, f, ensure_ascii=False, indent=4, default=str)
+        st.success("Dados salvos com sucesso no arquivo 'meu_banco.json'!")
+
+    with col_l2:
+      if st.button("📂 Carregar do Disco Local", use_container_width=True):
+        try:
+          with open("meu_banco.json", "r", encoding="utf-8") as f:
+            dados_locais = json.load(f)
+            st.session_state.lancamentos = pd.DataFrame(
+                dados_locais["lancamentos"]
+            )
+            st.session_state.categorias = dados_locais["categorias"]
+            st.session_state.contas = dados_locais["contas"]
+          st.success("Dados carregados com sucesso do disco local!")
+          st.rerun()
+        except FileNotFoundError:
+          st.warning(
+              "Nenhum arquivo 'meu_banco.json' encontrado. Salve primeiro!"
+          )
+        except Exception as e:
+          st.error(f"Erro ao carregar: {e}")
