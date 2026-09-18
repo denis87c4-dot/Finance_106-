@@ -2,6 +2,7 @@ import io
 import json
 import zipfile
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 # Configuração da página
@@ -74,21 +75,218 @@ if "cartoes" not in st.session_state:
 # ==================== DASHBOARD ====================
 if aba == "Dashboard":
   st.title("📊 Dashboard Financeiro")
+
   if not st.session_state.lancamentos.empty:
-    st.dataframe(st.session_state.lancamentos, use_container_width=True)
+    # Garantir que a coluna Data seja datetime
+    df_temp = st.session_state.lancamentos.copy()
+    df_temp["Data"] = pd.to_datetime(df_temp["Data"])
 
-    df_rec = st.session_state.lancamentos[
-        st.session_state.lancamentos["Tipo"] == "Receita"
-    ]
-    df_desp = st.session_state.lancamentos[
-        st.session_state.lancamentos["Tipo"] == "Despesa"
-    ]
+    # ==================== FILTROS DINÂMICOS ====================
+    st.markdown("### 🔍 Filtros Dinâmicos")
+    with st.expander("🛠️ Personalizar Visualização do Dashboard", expanded=True):
+      col_f1, col_f2, col_f3, col_f4 = st.columns(4)
 
-    col1, col2 = st.columns(2)
-    with col1:
-      st.metric("Total Receitas", f"R$ {df_rec['Valor'].sum():,.2f}")
-    with col2:
-      st.metric("Total Despesas", f"R$ {df_desp['Valor'].sum():,.2f}")
+      with col_f1:
+        tipo_periodo = st.selectbox(
+            "Agrupamento Temporal",
+            ["Mensal", "Trimestral", "Quadrimestral", "Semestral", "Anual"],
+        )
+
+      with col_f2:
+        anos_disponiveis = sorted(
+            df_temp["Data"].dt.year.dropna().unique().tolist()
+        )
+        if not anos_disponiveis:
+          anos_disponiveis = [pd.Timestamp.now().year]
+        ano_selecionado = st.multiselect(
+            "Filtrar Anos",
+            anos_disponiveis,
+            default=anos_disponiveis,
+        )
+
+      with col_f3:
+        contas_disponiveis = st.session_state.contas
+        conta_selecionada = st.multiselect(
+            "Filtrar Contas/Cartões",
+            contas_disponiveis,
+            default=contas_disponiveis,
+        )
+
+      with col_f4:
+        categorias_disponiveis = st.session_state.categorias
+        categoria_selecionada = st.multiselect(
+            "Filtrar Categorias",
+            categorias_disponiveis,
+            default=categorias_disponiveis,
+        )
+
+      filtro_tipo_lanc = st.multiselect(
+          "Tipos de Lançamento",
+          ["Receita", "Despesa", "Transferência"],
+          default=["Receita", "Despesa", "Transferência"],
+      )
+
+    # Aplicar filtros no DataFrame
+    if ano_selecionado:
+      df_temp = df_temp[df_temp["Data"].dt.year.isin(ano_selecionado)]
+    if conta_selecionada:
+      df_temp = df_temp[
+          df_temp["Conta"].isin(conta_selecionada)
+          | df_temp["Conta Destino"].isin(conta_selecionada)
+      ]
+    if categoria_selecionada:
+      df_temp = df_temp[df_temp["Categoria"].isin(categoria_selecionada)]
+    if filtro_tipo_lanc:
+      df_temp = df_temp[df_temp["Tipo"].isin(filtro_tipo_lanc)]
+
+    if df_temp.empty:
+      st.warning(
+          "Nenhum lançamento encontrado com os filtros selecionados no momento."
+      )
+    else:
+      # Definir formato de agrupamento
+      if tipo_periodo == "Mensal":
+        df_temp["Periodo"] = df_temp["Data"].dt.to_period("M").astype(str)
+      elif tipo_periodo == "Trimestral":
+        df_temp["Periodo"] = df_temp["Data"].dt.to_period("Q").astype(str)
+      elif tipo_periodo == "Quadrimestral":
+        df_temp["Periodo"] = (
+            df_temp["Data"].dt.year.astype(str)
+            + "-Q"
+            + ((df_temp["Data"].dt.month - 1) // 4 + 1).astype(str)
+        )
+      elif tipo_periodo == "Semestral":
+        df_temp["Periodo"] = (
+            df_temp["Data"].dt.year.astype(str)
+            + "-S"
+            + ((df_temp["Data"].dt.month - 1) // 6 + 1).astype(str)
+        )
+      else:
+        df_temp["Periodo"] = df_temp["Data"].dt.year.astype(str)
+
+      # Agrupar receitas e despesas por período
+      df_rec_m = (
+          df_temp[df_temp["Tipo"] == "Receita"]
+          .groupby("Periodo")["Valor"]
+          .sum()
+          .reset_index(name="Income")
+      )
+      df_desp_m = (
+          df_temp[df_temp["Tipo"] == "Despesa"]
+          .groupby("Periodo")["Valor"]
+          .sum()
+          .reset_index(name="Expense")
+      )
+
+      df_resumo = pd.merge(
+          df_rec_m, df_desp_m, on="Periodo", how="outer"
+      ).fillna(0)
+      df_resumo = df_resumo.sort_values("Periodo").reset_index(drop=True)
+
+      df_resumo["Cash Flow"] = df_resumo["Income"] - df_resumo["Expense"]
+      df_resumo["Cumulative"] = df_resumo["Cash Flow"].cumsum()
+
+      df_resumo = df_resumo.rename(columns={"Periodo": "Período"})
+
+      st.markdown("---")
+      st.subheader(f"📅 Resumo Financeiro ({tipo_periodo})")
+
+      def color_negative(val):
+        if isinstance(val, (int, float)) and val < 0:
+          return "color: #ff4b4b; font-weight: bold;"
+        return ""
+
+      df_styled = df_resumo.style.format(
+          {
+              "Income": "R$ {:,.2f}",
+              "Expense": "R$ {:,.2f}",
+              "Cash Flow": "R$ {:,.2f}",
+              "Cumulative": "R$ {:,.2f}",
+          }
+      ).applymap(color_negative, subset=["Cash Flow", "Cumulative"])
+
+      st.dataframe(df_styled, use_container_width=True)
+
+      st.markdown("---")
+
+      # ==================== GRÁFICOS VISUAIS ====================
+      st.subheader("📈 Análise Gráfica Dinâmica")
+
+      col_g1, col_g2 = st.columns(2)
+
+      with col_g1:
+        st.markdown("##### 🌊 Cash Flow vs. Cumulative")
+        df_melt_linhas = df_resumo.melt(
+            id_vars=["Período"],
+            value_vars=["Cash Flow", "Cumulative"],
+            var_name="Métrica",
+            value_name="Valor",
+        )
+
+        fig_linhas = px.line(
+            df_melt_linhas,
+            x="Período",
+            y="Valor",
+            color="Métrica",
+            markers=True,
+            color_discrete_map={
+                "Cash Flow": "#00CC96",
+                "Cumulative": "#636EFA",
+            },
+        )
+        fig_linhas.update_layout(
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            xaxis_title="",
+            yaxis_title="R$ (Reais)",
+            legend_title="",
+            margin=dict(l=10, r=10, t=10, b=10),
+        )
+        st.plotly_chart(fig_linhas, use_container_width=True)
+
+      with col_g2:
+        st.markdown("##### 📊 Receitas (Income) vs. Despesas (Expense)")
+        df_melt_barras = df_resumo.melt(
+            id_vars=["Período"],
+            value_vars=["Income", "Expense"],
+            var_name="Tipo",
+            value_name="Valor",
+        )
+
+        fig_barras = px.bar(
+            df_melt_barras,
+            x="Período",
+            y="Valor",
+            color="Tipo",
+            barmode="group",
+            color_discrete_map={"Income": "#00CC96", "Expense": "#EF553B"},
+        )
+        fig_barras.update_layout(
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)",
+            xaxis_title="",
+            yaxis_title="R$ (Reais)",
+            legend_title="",
+            margin=dict(l=10, r=10, t=10, b=10),
+        )
+        st.plotly_chart(fig_barras, use_container_width=True)
+
+      st.markdown("---")
+      st.subheader("📋 Lançamentos Filtrados")
+      st.dataframe(df_temp, use_container_width=True)
+
+      df_rec_tot = df_temp[df_temp["Tipo"] == "Receita"]
+      df_desp_tot = df_temp[df_temp["Tipo"] == "Despesa"]
+
+      col1, col2 = st.columns(2)
+      with col1:
+        st.metric(
+            "Total Receitas (Filtrado)", f"R$ {df_rec_tot['Valor'].sum():,.2f}"
+        )
+      with col2:
+        st.metric(
+            "Total Despesas (Filtrado)", f"R$ {df_desp_tot['Valor'].sum():,.2f}"
+        )
   else:
     st.info("Nenhum lançamento registrado ainda.")
 
@@ -457,7 +655,6 @@ elif aba == "Backup & Segurança":
       ]
   )
 
-  # 1. EXPORTAR DADOS (JSON / CSV)
   with tab_exp:
     st.subheader("Exportação Rápida")
     dados_dict = {
@@ -486,7 +683,6 @@ elif aba == "Backup & Segurança":
         use_container_width=True,
     )
 
-  # 2. BACKUP ZIP
   with tab_zip:
     st.subheader("Pacote de Segurança Compactado (.zip)")
     if st.button("📦 Gerar Arquivo ZIP de Backup", use_container_width=True):
@@ -518,7 +714,6 @@ elif aba == "Backup & Segurança":
       )
       st.success("Pacote ZIP gerado com sucesso!")
 
-  # 3. IMPORTAÇÃO MULTI-FORMATO
   with tab_imp:
     st.subheader("Importar Dados (ZIP, JSON, CSV ou Excel)")
     st.write(
@@ -586,13 +781,11 @@ elif aba == "Backup & Segurança":
       except Exception as e:
         st.error(f"Erro ao processar o arquivo: {e}")
 
-  # 4. PERSISTÊNCIA LOCAL (DISCO)
   with tab_loc:
     st.subheader("Backup Automático no Servidor / Máquina Local")
     st.write(
         "Salva o estado atual diretamente em um arquivo fixo (`meu_banco.json`)"
-        " na pasta do sistema, evitando que você precise baixar e reenviar o"
-        " arquivo toda vez."
+        " na pasta do sistema."
     )
 
     col_l1, col_l2 = st.columns(2)
