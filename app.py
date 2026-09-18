@@ -280,7 +280,7 @@ elif aba == "Cadastro de Categorias e Contas":
     st.write("Contas atuais:", st.session_state.contas)
 
 
-# ==================== BACKUP & SEGURANÇA (NOVA ABA PROFISSIONAL) ====================
+# ==================== BACKUP & SEGURANÇA ====================
 elif aba == "Backup & Segurança":
   st.title("🛡️ Central de Backup e Segurança")
   st.write(
@@ -300,12 +300,6 @@ elif aba == "Backup & Segurança":
   # 1. EXPORTAR DADOS (JSON / CSV)
   with tab_exp:
     st.subheader("Exportação Rápida")
-    st.write(
-        "Baixe um arquivo consolidado contendo todas as transações, contas e"
-        " categorias."
-    )
-
-    # Prepara JSON State
     dados_dict = {
         "lancamentos": st.session_state.lancamentos.to_dict(orient="records"),
         "categorias": st.session_state.categorias,
@@ -322,7 +316,6 @@ elif aba == "Backup & Segurança":
     )
 
     st.markdown("---")
-    st.subheader("Exportar Lançamentos (CSV)")
     csv_data = st.session_state.lancamentos.to_csv(index=False).encode("utf-8")
     st.download_button(
         label="📊 Baixar Apenas Lançamentos (.csv)",
@@ -335,22 +328,15 @@ elif aba == "Backup & Segurança":
   # 2. BACKUP ZIP
   with tab_zip:
     st.subheader("Pacote de Segurança Compactado (.zip)")
-    st.write(
-        "Gera um arquivo ZIP contendo múltiplos arquivos separados (CSV de"
-        " lançamentos, JSON de categorias e contas)."
-    )
-
-    if st.button(" gerar Arquivo ZIP de Backup", use_container_width=True):
+    if st.button("📦 Gerar Arquivo ZIP de Backup", use_container_width=True):
       zip_buffer = io.BytesIO()
       with zipfile.ZipFile(
           zip_buffer, "w", zipfile.ZIP_DEFLATED
       ) as zip_file:
-        # Adiciona lançamentos em CSV
         zip_file.writestr(
             "lancamentos.csv",
             st.session_state.lancamentos.to_csv(index=False).encode("utf-8"),
         )
-        # Adiciona metadados em JSON
         meta_dict = {
             "categorias": st.session_state.categorias,
             "contas": st.session_state.contas,
@@ -370,23 +356,41 @@ elif aba == "Backup & Segurança":
       )
       st.success("Pacote ZIP gerado com sucesso!")
 
-  # 3. IMPORTAÇÃO MULTI-FORMATO
+  # 3. IMPORTAÇÃO MULTI-FORMATO (AGORA COM SUPORTE A ZIP)
   with tab_imp:
-    st.subheader("Importar Dados (JSON, CSV ou Excel)")
+    st.subheader("Importar Dados (ZIP, JSON, CSV ou Excel)")
     st.write(
-        "Faça upload de arquivos de backup anteriores para restaurar o seu"
-        " sistema."
+        "Faça upload de arquivos de backup anteriores (incluindo o arquivo"
+        " .zip) para restaurar o seu sistema."
     )
 
     arquivo_subido = st.file_uploader(
-        "Escolha o arquivo de backup", type=["json", "csv", "xlsx"]
+        "Escolha o arquivo de backup", type=["zip", "json", "csv", "xlsx", "xls"]
     )
 
     if arquivo_subido is not None:
       extensao = arquivo_subido.name.split(".")[-1].lower()
 
       try:
-        if extensao == "json":
+        if extensao == "zip":
+          with zipfile.ZipFile(arquivo_subido, "r") as zip_ref:
+            arquivos_no_zip = zip_ref.namelist()
+
+            if "lancamentos.csv" in arquivos_no_zip:
+              with zip_ref.open("lancamentos.csv") as f:
+                st.session_state.lancamentos = pd.read_csv(f)
+
+            if "metadados.json" in arquivos_no_zip:
+              with zip_ref.open("metadados.json") as f:
+                meta_data = json.load(f)
+                if "categorias" in meta_data:
+                  st.session_state.categorias = meta_data["categorias"]
+                if "contas" in meta_data:
+                  st.session_state.contas = meta_data["contas"]
+
+          st.success("Backup ZIP importado e restaurado com sucesso!")
+
+        elif extensao == "json":
           conteudo = json.load(arquivo_subido)
           if "lancamentos" in conteudo:
             st.session_state.lancamentos = pd.DataFrame(
