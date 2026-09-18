@@ -5,7 +5,10 @@ import streamlit as st
 st.set_page_config(page_title="Fluxo Básico", page_icon="💰", layout="wide")
 
 # ==================== NAVEGAÇÃO LATERAL ====================
-aba = st.sidebar.radio("Navegação", ["Dashboard", "Cadastro", "Lançamentos"])
+# Alterado a ordem e os nomes das abas conforme solicitado
+aba = st.sidebar.radio(
+    "Navegação", ["Dashboard", "Cadastro", "Cadastro de Categorias e Contas"]
+)
 
 # ==================== ESTADOS DA SESSÃO ====================
 # Base de dados em memória para Lançamentos
@@ -66,39 +69,8 @@ if aba == "Dashboard":
     st.info("Nenhum lançamento registrado ainda.")
 
 
-# ==================== CADASTRO ====================
+# ==================== CADASTRO (ANTIGA TELA DE LANÇAMENTOS) ====================
 elif aba == "Cadastro":
-  st.title("📝 Cadastro Geral")
-
-  tab_cat, tab_acc = st.tabs(["Categorias", "Contas (Accounts)"])
-
-  with tab_cat:
-    st.subheader("Gerenciar Categorias")
-    nova_cat = st.text_input("Nova Categoria")
-    if st.button("Adicionar Categoria"):
-      if nova_cat and nova_cat not in st.session_state.categorias:
-        st.session_state.categorias.append(nova_cat)
-        st.success(f"Categoria '{nova_cat}' adicionada com sucesso!")
-      else:
-        st.warning("Insira uma categoria válida ou que não exista.")
-
-    st.write("Categorias atuais:", st.session_state.categorias)
-
-  with tab_acc:
-    st.subheader("Gerenciar Contas")
-    nova_conta = st.text_input("Nova Conta (Account)")
-    if st.button("Adicionar Conta"):
-      if nova_conta and nova_conta not in st.session_state.contas:
-        st.session_state.contas.append(nova_conta)
-        st.success(f"Conta '{nova_conta}' adicionada com sucesso!")
-      else:
-        st.warning("Insira uma conta válida ou que não exista.")
-
-    st.write("Contas atuais:", st.session_state.contas)
-
-
-# ==================== LANÇAMENTOS ====================
-elif aba == "Lançamentos":
   st.title("💵 Registrar Lançamento")
 
   tipo = st.selectbox(
@@ -277,3 +249,34 @@ elif aba == "Lançamentos":
           f"Lançamento(s) salvo(s) com sucesso! ({parcelas} registro(s)"
           " gerado(s))"
       )
+
+
+# ==================== CADASTRO DE CATEGORIAS E CONTAS ====================
+elif aba == "Cadastro de Categorias e Contas":
+  st.title("📝 Cadastro Geral")
+
+  tab_cat, tab_acc = st.tabs(["Categorias", "Contas (Accounts)"])
+
+  with tab_cat:
+    st.subheader("Gerenciar Categorias")
+    nova_cat = st.text_input("Nova Categoria")
+    if st.button("Adicionar Categoria"):
+      if nova_cat and nova_cat not in st.session_state.categorias:
+        st.session_state.categorias.append(nova_cat)
+        st.success(f"Categoria '{nova_cat}' adicionada com sucesso!")
+      else:
+        st.warning("Insira uma categoria válida ou que não exista.")
+
+    st.write("Categorias atuais:", st.session_state.categorias)
+
+  with tab_acc:
+    st.subheader("Gerenciar Contas")
+    nova_conta = st.text_input("Nova Conta (Account)")
+    if st.button("Adicionar Conta"):
+      if nova_conta and nova_conta not in st.session_state.contas:
+        st.session_state.contas.append(nova_conta)
+        st.success(f"Conta '{nova_conta}' adicionada com sucesso!")
+      else:
+        st.warning("Insira uma conta válida ou que não exista.")
+
+    st.write("Contas atuais:", st.session_state.contas)
