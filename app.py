@@ -203,7 +203,7 @@ if aba == "Dashboard":
               "Cash Flow": "R$ {:,.2f}",
               "Cumulative": "R$ {:,.2f}",
           }
-      ).applymap(color_negative, subset=["Cash Flow", "Cumulative"])
+      ).map(color_negative, subset=["Cash Flow", "Cumulative"])
 
       st.dataframe(df_styled, use_container_width=True)
 
