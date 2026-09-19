@@ -91,7 +91,94 @@ if aba == "Dashboard":
     if "Status" not in df_temp.columns:
       df_temp["Status"] = "Efetivado"
 
+    # ==================== NOVO BLOCO: CONTROLE DE BUDGET VS EFETIVADO (MÊS) ====================
+    st.markdown("---")
+    st.subheader("🎯 Controle Orçamentário: Budget vs. Efetivado por Categoria")
+
+    df_temp["AnoMes"] = df_temp["Data"].dt.to_period("M").astype(str)
+    meses_disponiveis = sorted(df_temp["AnoMes"].unique().tolist(), reverse=True)
+
+    if not meses_disponiveis:
+      meses_disponiveis = [pd.Timestamp.now().strftime("%Y-%m")]
+
+    col_bm1, col_bm2 = st.columns([2, 2])
+    with col_bm1:
+      mes_atual_str = pd.Timestamp.now().strftime("%Y-%m")
+      default_mes = (
+          [mes_atual_str] if mes_atual_str in meses_disponiveis else [meses_disponiveis[0]]
+      )
+      mes_selecionado = st.selectbox(
+          "📅 Selecione o Mês para Análise do Budget",
+          meses_disponiveis,
+          index=meses_disponiveis.index(default_mes[0]) if default_mes[0] in meses_disponiveis else 0,
+      )
+
+    with col_bm2:
+      tipo_orcamento = st.selectbox(
+          "Tipo de Lançamento para o Budget", ["Despesa", "Receita"]
+      )
+
+    df_mes = df_temp[
+        (df_temp["AnoMes"] == mes_selecionado)
+        & (df_temp["Tipo"] == tipo_orcamento)
+    ]
+
+    if df_mes.empty:
+      st.info(f"Nenhum lançamento encontrado para o período {mes_selecionado}.")
+    else:
+      df_pivot = (
+          df_mes.pivot_table(
+              index="Categoria",
+              columns="Status",
+              values="Valor",
+              aggfunc="sum",
+          )
+          .reset_index()
+          .fillna(0.0)
+      )
+
+      if "Orçado" not in df_pivot.columns:
+        df_pivot["Orçado"] = 0.0
+      if "Efetivado" not in df_pivot.columns:
+        df_pivot["Efetivado"] = 0.0
+
+      df_budget_final = pd.DataFrame()
+      df_budget_final["Categoria"] = df_pivot["Categoria"]
+      df_budget_final["Budget"] = df_pivot["Orçado"]
+      df_budget_final["Efetivado"] = df_pivot["Efetivado"]
+
+      if tipo_orcamento == "Despesa":
+        df_budget_final["Diferença (Saldo)"] = (
+            df_budget_final["Budget"] - df_budget_final["Efetivado"]
+        )
+      else:
+        df_budget_final["Diferença (Saldo)"] = (
+            df_budget_final["Efetivado"] - df_budget_final["Budget"]
+        )
+
+      df_budget_final["% Utilizado"] = df_budget_final.apply(
+          lambda row: (row["Efetivado"] / row["Budget"] * 100)
+          if row["Budget"] > 0
+          else 0.0,
+          axis=1,
+      )
+
+      st.dataframe(
+          df_budget_final.style.format(
+              {
+                  "Budget": "R$ {:,.2f}",
+                  "Efetivado": "R$ {:,.2f}",
+                  "Diferença (Saldo)": "R$ {:,.2f}",
+                  "% Utilizado": "{:.1f}%",
+              }
+          ),
+          use_container_width=True,
+          hide_index=True,
+      )
+    # ==================== FIM DO BLOCO DE BUDGET ====================
+
     # ==================== FILTROS DINÂMICOS ====================
+    st.markdown("---")
     st.markdown("### 🔍 Filtros Dinâmicos")
     with st.expander("🛠️ Personalizar Visualização do Dashboard", expanded=True):
       col_f1, col_f2, col_f3, col_f4 = st.columns(4)
