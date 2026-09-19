@@ -15,6 +15,7 @@ aba = st.sidebar.radio(
     "Navegação",
     [
         "Dashboard",
+        "Lançamentos",  # <--- NOVA ABA INTELIGENTE ADICIONADA
         "Cadastro",
         "Cadastro de Categorias e Contas",
         "Cartões de Crédito",
@@ -289,6 +290,266 @@ if aba == "Dashboard":
         )
   else:
     st.info("Nenhum lançamento registrado ainda.")
+
+
+# ==================== LANÇAMENTOS (GERENCIAMENTO INTELIGENTE) ====================
+elif aba == "Lançamentos":
+  st.title("📋 Central Inteligente de Lançamentos")
+  st.write(
+      "Consulte, filtre, edite ou exclua seus lançamentos com agilidade e"
+      " precisão."
+  )
+
+  if st.session_state.lancamentos.empty:
+    st.info(
+        "Nenhum lançamento cadastrado até o momento. Vá até a aba 'Cadastro'"
+        " para adicionar registros."
+    )
+  else:
+    df_lanc = st.session_state.lancamentos.copy()
+    df_lanc["Data"] = pd.to_datetime(df_lanc["Data"]).dt.date
+
+    with st.expander("🔍 Filtros Avançados e Busca Global", expanded=True):
+      col_b1, col_b2 = st.columns([2, 1])
+      with col_b1:
+        busca_texto = st.text_input(
+            "🔎 Busca Rápida (Descrição, Categoria ou Conta)",
+            placeholder="Digite para filtrar instantaneamente...",
+        )
+      with col_b2:
+        tipos_filtro = st.multiselect(
+            "Filtrar por Tipo",
+            ["Receita", "Despesa", "Transferência"],
+            default=["Receita", "Despesa", "Transferência"],
+        )
+
+      col_f1, col_f2, col_f3 = st.columns(3)
+      with col_f1:
+        contas_disp = st.session_state.contas
+        filtro_conta = st.multiselect(
+            "Contas / Origem", contas_disp, default=[]
+        )
+      with col_f2:
+        cat_disp = st.session_state.categorias + ["Transferência"]
+        filtro_cat = st.multiselect("Categorias", cat_disp, default=[])
+      with col_f3:
+        min_data = df_lanc["Data"].min()
+        max_data = df_lanc["Data"].max()
+        periodo_datas = st.date_input(
+            "Intervalo de Datas",
+            value=(min_data, max_data),
+            min_value=min_data,
+            max_value=max_data,
+        )
+
+    df_filtrado = df_lanc[df_lanc["Tipo"].isin(tipos_filtro)]
+
+    if busca_texto:
+      termo = busca_texto.lower()
+      df_filtrado = df_filtrado[
+          df_filtrado["Descrição"].str.lower().str.contains(termo, na=False)
+          | df_filtrado["Categoria"].str.lower().str.contains(termo, na=False)
+          | df_filtrado["Conta"].str.lower().str.contains(termo, na=False)
+      ]
+
+    if filtro_conta:
+      df_filtrado = df_filtrado[
+          df_filtrado["Conta"].isin(filtro_conta)
+          | df_filtrado["Conta Destino"].isin(filtro_conta)
+      ]
+
+    if filtro_cat:
+      df_filtrado = df_filtrado[df_filtrado["Categoria"].isin(filtro_cat)]
+
+    if isinstance(periodo_datas, tuple) and len(periodo_datas) == 2:
+      data_inicio, data_fim = periodo_datas
+      df_filtrado = df_filtrado[
+          (df_filtrado["Data"] >= data_inicio)
+          & (df_filtrado["Data"] <= data_fim)
+      ]
+
+    st.markdown("---")
+    m1, m2, m3 = st.columns(3)
+    total_filtrado_val = df_filtrado["Valor"].sum()
+    qtd_registros = len(df_filtrado)
+
+    m1.metric("📊 Registros Encontrados", f"{qtd_registros} itens")
+    m2.metric("💰 Soma dos Valores Exibidos", f"R$ {total_filtrado_val:,.2f}")
+    m3.metric(
+        "📈 Média por Lançamento",
+        (
+            f"R$ {total_filtrado_val / qtd_registros:,.2f}"
+            if qtd_registros > 0
+            else "R$ 0,00"
+        ),
+    )
+    st.markdown("---")
+
+    st.subheader("📑 Registros Correspondentes")
+
+    if df_filtrado.empty:
+      st.warning(
+          "Nenhum lançamento corresponde aos filtros aplicados na busca."
+      )
+    else:
+      df_exibicao = df_filtrado.copy()
+      df_exibicao.index.name = "ID_Original"
+      df_exibicao = df_exibicao.reset_index()
+
+      st.dataframe(
+          df_exibicao,
+          use_container_width=True,
+          hide_index=True,
+          column_config={
+              "ID_Original": st.column_config.NumberColumn(
+                  "ID", help="Identificador único do lançamento"
+              ),
+              "Valor": st.column_config.NumberColumn(
+                  "Valor (R$)", format="R$ %.2f"
+              ),
+              "Data": st.column_config.DateColumn(
+                  "Data", format="DD/MM/YYYY"
+              ),
+          },
+      )
+
+      st.markdown("### ⚡ Ações em Lançamentos")
+      acao_escolhida = st.radio(
+          "Selecione a Ação desejada",
+          [
+              "Nenhuma",
+              "✏️ Editar Lançamento",
+              "🗑️ Excluir Lançamento Específico",
+              "⚠️ Excluir TODOS os Filtrados",
+          ],
+          horizontal=True,
+      )
+
+      if acao_escolhida == "✏️ Editar Lançamento":
+        st.markdown("#### Editar Registro")
+        indices_disponiveis = df_filtrado.index.tolist()
+        id_para_editar = st.selectbox(
+            "Selecione o ID do lançamento que deseja editar",
+            indices_disponiveis,
+            format_func=lambda x: f"ID {x} - [{st.session_state.lancamentos.loc[x, 'Tipo']}] {st.session_state.lancamentos.loc[x, 'Descrição']} (R$ {st.session_state.lancamentos.loc[x, 'Valor']:,.2f})",
+        )
+
+        if id_para_editar is not None:
+          reg_atual = st.session_state.lancamentos.loc[id_para_editar]
+
+          with st.form("form_edicao_lancamento"):
+            col_e1, col_e2 = st.columns(2)
+            with col_e1:
+              novo_tipo = st.selectbox(
+                  "Tipo",
+                  ["Receita", "Despesa", "Transferência"],
+                  index=["Receita", "Despesa", "Transferência"].index(
+                      reg_atual["Tipo"]
+                  ),
+              )
+              nova_conta = st.selectbox(
+                  "Conta",
+                  st.session_state.contas,
+                  index=(
+                      st.session_state.contas.index(reg_atual["Conta"])
+                      if reg_atual["Conta"] in st.session_state.contas
+                      else 0
+                  ),
+              )
+              nova_categoria = st.selectbox(
+                  "Categoria",
+                  st.session_state.categorias,
+                  index=(
+                      st.session_state.categorias.index(reg_atual["Categoria"])
+                      if reg_atual["Categoria"]
+                      in st.session_state.categorias
+                      else 0
+                  ),
+              )
+            with col_e2:
+              nova_desc = st.text_input(
+                  "Descrição", value=reg_atual["Descrição"]
+              )
+              novo_valor = st.number_input(
+                  "Valor (R$)",
+                  min_value=0.0,
+                  value=float(reg_atual["Valor"]),
+                  step=10.0,
+              )
+              nova_data = st.date_input(
+                  "Data", value=pd.to_datetime(reg_atual["Data"])
+              )
+
+            btn_salvar_edicao = st.form_submit_button(
+                "💾 Salvar Alterações", use_container_width=True
+            )
+            if btn_salvar_edicao:
+              st.session_state.lancamentos.loc[id_para_editar, "Tipo"] = (
+                  novo_tipo
+              )
+              st.session_state.lancamentos.loc[id_para_editar, "Conta"] = (
+                  nova_conta
+              )
+              st.session_state.lancamentos.loc[
+                  id_para_editar, "Categoria"
+              ] = nova_categoria
+              st.session_state.lancamentos.loc[id_para_editar, "Descrição"] = (
+                  nova_desc
+              )
+              st.session_state.lancamentos.loc[id_para_editar, "Valor"] = (
+                  novo_valor
+              )
+              st.session_state.lancamentos.loc[id_para_editar, "Data"] = (
+                  nova_data
+              )
+              st.success(f"Lançamento ID {id_para_editar} atualizado com sucesso!")
+              st.rerun()
+
+      elif acao_escolhida == "🗑️ Excluir Lançamento Específico":
+        st.markdown("#### Excluir Registro Individual")
+        indices_disponiveis = df_filtrado.index.tolist()
+        id_para_excluir = st.selectbox(
+            "Selecione o ID para excluir",
+            indices_disponiveis,
+            format_func=lambda x: f"ID {x} - [{st.session_state.lancamentos.loc[x, 'Tipo']}] {st.session_state.lancamentos.loc[x, 'Descrição']} (R$ {st.session_state.lancamentos.loc[x, 'Valor']:,.2f})",
+            key="select_excluir_unico",
+        )
+
+        if st.button(
+            "🗑️ Confirmar Exclusão deste Lançamento", type="primary"
+        ):
+          st.session_state.lancamentos = st.session_state.lancamentos.drop(
+              id_para_excluir
+          ).reset_index(drop=True)
+          st.success(
+              f"Lançamento ID {id_para_excluir} removido com sucesso!"
+          )
+          st.rerun()
+
+      elif acao_escolhida == "⚠️ Excluir TODOS os Filtrados":
+        st.warning(
+            f"Atenção: Você está prestes a excluir todos os {len(df_filtrado)}"
+            " registros exibidos no filtro atual."
+        )
+        confirmacao = st.text_input(
+            "Digite 'EXCLUIR' para confirmar a operação em lote:"
+        )
+        if st.button(
+            "🗑️ Executar Exclusão em Lote", type="primary", use_container_width=True
+        ):
+          if confirmacao == "EXCLUIR":
+            indices_para_remover = df_filtrado.index.tolist()
+            st.session_state.lancamentos = (
+                st.session_state.lancamentos.drop(indices_para_remover)
+                .reset_index(drop=True)
+            )
+            st.success(
+                f"{len(indices_para_remover)} lançamentos foram excluídos com"
+                " sucesso!"
+            )
+            st.rerun()
+          else:
+            st.error("Confirmação incorreta. Digite 'EXCLUIR' exatamente.")
 
 
 # ==================== CADASTRO (LANÇAMENTOS) ====================
