@@ -3,6 +3,7 @@ import json
 import zipfile
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 import streamlit as st
 
 # Configuração da página
@@ -91,12 +92,11 @@ if aba == "Dashboard":
     if "Status" not in df_temp.columns:
       df_temp["Status"] = "Efetivado"
 
-    # ==================== NOVO BLOCO: CONTROLE DE BUDGET VS EFETIVADO (MÊS) ====================
+    # ==================== BLOCO: CONTROLE DE BUDGET VS EFETIVADO (MÊS) ====================
     st.markdown("---")
     st.subheader("🎯 Controle Orçamentário: Budget vs. Efetivado por Categoria")
 
     df_temp["AnoMes"] = df_temp["Data"].dt.to_period("M").astype(str)
-    # Ordenar meses do mais recente para o mais antigo (mês atual em evidência)
     meses_disponiveis = sorted(df_temp["AnoMes"].unique().tolist(), reverse=True)
 
     if not meses_disponiveis:
@@ -106,12 +106,18 @@ if aba == "Dashboard":
     with col_bm1:
       mes_atual_str = pd.Timestamp.now().strftime("%Y-%m")
       default_mes = (
-          [mes_atual_str] if mes_atual_str in meses_disponiveis else [meses_disponiveis[0]]
+          [mes_atual_str]
+          if mes_atual_str in meses_disponiveis
+          else [meses_disponiveis[0]]
       )
       mes_selecionado = st.selectbox(
           "📅 Selecione o Mês para Análise do Budget",
           meses_disponiveis,
-          index=meses_disponiveis.index(default_mes[0]) if default_mes[0] in meses_disponiveis else 0,
+          index=(
+              meses_disponiveis.index(default_mes[0])
+              if default_mes[0] in meses_disponiveis
+              else 0
+          ),
       )
 
     with col_bm2:
@@ -191,7 +197,6 @@ if aba == "Dashboard":
         )
 
       with col_f2:
-        # Anos ordenados do mais recente para o mais antigo (decrescente)
         anos_disponiveis = sorted(
             df_temp["Data"].dt.year.dropna().unique().tolist(), reverse=True
         )
@@ -323,24 +328,51 @@ if aba == "Dashboard":
 
       with col_g1:
         st.markdown("##### 🌊 Cash Flow vs. Cumulative")
-        df_melt_linhas = df_resumo.melt(
-            id_vars=["Período"],
-            value_vars=["Cash Flow", "Cumulative"],
-            var_name="Métrica",
-            value_name="Valor",
+
+        # ==================== GRÁFICO COM CASH FLOW VERMELHO QUANDO < 0 ====================
+        fig_linhas = go.Figure()
+
+        # Linha Cumulative (Azul)
+        fig_linhas.add_trace(
+            go.Scatter(
+                x=df_resumo["Período"],
+                y=df_resumo["Cumulative"],
+                mode="lines+markers",
+                name="Cumulative",
+                line=dict(color="#636EFA", width=2),
+            )
         )
 
-        fig_linhas = px.line(
-            df_melt_linhas,
-            x="Período",
-            y="Valor",
-            color="Métrica",
-            markers=True,
-            color_discrete_map={
-                "Cash Flow": "#00CC96",
-                "Cumulative": "#636EFA",
-            },
+        # Separar o Cash Flow positivo (verde) e negativo (vermelho) para colorir a linha dinamicamente
+        cf_positivo = df_resumo["Cash Flow"].apply(
+            lambda x: x if x >= 0 else None
         )
+        cf_negativo = df_resumo["Cash Flow"].apply(
+            lambda x: x if x < 0 else None
+        )
+
+        fig_linhas.add_trace(
+            go.Scatter(
+                x=df_resumo["Período"],
+                y=cf_positivo,
+                mode="lines+markers",
+                name="Cash Flow (Positivo)",
+                line=dict(color="#00CC96", width=2),
+                connectgaps=True,
+            )
+        )
+
+        fig_linhas.add_trace(
+            go.Scatter(
+                x=df_resumo["Período"],
+                y=cf_negativo,
+                mode="lines+markers",
+                name="Cash Flow (Negativo)",
+                line=dict(color="#EF553B", width=3),  # Vermelho em destaque
+                connectgaps=True,
+            )
+        )
+
         fig_linhas.update_layout(
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
@@ -350,6 +382,7 @@ if aba == "Dashboard":
             margin=dict(l=10, r=10, t=10, b=10),
         )
         st.plotly_chart(fig_linhas, use_container_width=True)
+        # =================================================================================
 
       with col_g2:
         st.markdown("##### 📊 Receitas (Income) vs. Despesas (Expense)")
@@ -1029,15 +1062,10 @@ elif aba == "Cartões de Crédito":
             ),
         )
 
-      # ==================== NOVA FERRAMENTA: LANÇAR PAGAMENTO DE FATURA (EX: DIA 26) ====================
       st.markdown("---")
-      st.markdown(f"💳 **Registrar Pagamento de Fatura para: {cartao_selecionado}**")
-      st.write(
-          "Para abater o saldo devedor do cartão sem precisar cadastrar novas"
-          " compras passadas, faça um registro de pagamento/transferência (ex:"
-          " Conta Corrente ➔ Cartão)."
+      st.markdown(
+          f"💳 **Registrar Pagamento de Fatura para: {cartao_selecionado}**"
       )
-
       with st.form("form_pagamento_fatura"):
         col_p1, col_p2, col_p3 = st.columns(3)
         with col_p1:
@@ -1050,7 +1078,7 @@ elif aba == "Cartões de Crédito":
               "Valor do Pagamento (R$)", min_value=0.0, step=10.0, format="%.2f"
           )
         with col_p3:
-          data_pagamento = st.date_input("Data do Pagamento (Ex: Dia 26)")
+          data_pagamento = st.date_input("Data do Pagamento")
 
         btn_lancar_pagamento = st.form_submit_button(
             "✅ Registrar Pagamento de Fatura", use_container_width=True
@@ -1060,7 +1088,6 @@ elif aba == "Cartões de Crédito":
           if valor_pagamento <= 0:
             st.error("O valor do pagamento deve ser maior que zero.")
           else:
-            # Criamos um registro do tipo Transferência para pagar a fatura
             novo_pag_df = pd.DataFrame(
                 [[
                     "Transferência",
@@ -1185,7 +1212,7 @@ elif aba == "Backup & Segurança":
       st.success("Pacote ZIP gerado com sucesso!")
 
   with tab_imp:
-    st.subheader("Importar Dados (ZIP, JSON, CSV ou Excel)")
+    st.subheader("Importار Dados (ZIP, JSON, CSV ou Excel)")
     st.write(
         "Faça upload de arquivos de backup anteriores (incluindo o arquivo"
         " .zip) para restaurar o seu sistema."
@@ -1253,7 +1280,7 @@ elif aba == "Backup & Segurança":
           st.session_state.lancamentos = pd.concat(
               [st.session_state.lancamentos, df_importado], ignore_index=True
           )
-          st.success("Lançamentos do Excel adicionados com sucesso!")
+          st.success("Denison de Jesus Oliveira", ignore_index=True) and st.success("Lançamentos do Excel adicionados com sucesso!")
 
         st.rerun()
       except Exception as e:
@@ -1303,4 +1330,4 @@ elif aba == "Backup & Segurança":
               "Nenhum arquivo 'meu_banco.json' encontrado. Salve primeiro!"
           )
         except Exception as e:
-          st.error(f"Erro ao carregar: {e}")
+          st.error(f"Erro ao processar o arquivo: {e}")
