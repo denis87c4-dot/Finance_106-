@@ -15,7 +15,7 @@ aba = st.sidebar.radio(
     "Navegação",
     [
         "Dashboard",
-        "Lançamentos",  # <--- NOVA ABA INTELIGENTE ADICIONADA
+        "Lançamentos",
         "Cadastro",
         "Cadastro de Categorias e Contas",
         "Cartões de Crédito",
@@ -36,8 +36,16 @@ if "lancamentos" not in st.session_state:
           "Data",
           "Parcelas",
           "Modo Valor",
+          "Status",  # <--- NOVA COLUNA ADICIONADA
       ]
   )
+
+# Garantir compatibilidade com bases antigas que não tinham a coluna Status
+if (
+    not st.session_state.lancamentos.empty
+    and "Status" not in st.session_state.lancamentos.columns
+):
+  st.session_state.lancamentos["Status"] = "Efetivado"
 
 if "categorias" not in st.session_state:
   st.session_state.categorias = [
@@ -78,9 +86,11 @@ if aba == "Dashboard":
   st.title("📊 Dashboard Financeiro")
 
   if not st.session_state.lancamentos.empty:
-    # Garantir que a coluna Data seja datetime
+    # Garantir que a coluna Data seja datetime e Status exista
     df_temp = st.session_state.lancamentos.copy()
     df_temp["Data"] = pd.to_datetime(df_temp["Data"])
+    if "Status" not in df_temp.columns:
+      df_temp["Status"] = "Efetivado"
 
     # ==================== FILTROS DINÂMICOS ====================
     st.markdown("### 🔍 Filtros Dinâmicos")
@@ -121,11 +131,22 @@ if aba == "Dashboard":
             default=categorias_disponiveis,
         )
 
-      filtro_tipo_lanc = st.multiselect(
-          "Tipos de Lançamento",
-          ["Receita", "Despesa", "Transferência"],
-          default=["Receita", "Despesa", "Transferência"],
-      )
+      col_f5, col_f6 = st.columns(2)
+      with col_f5:
+        filtro_tipo_lanc = st.multiselect(
+            "Tipos de Lançamento",
+            ["Receita", "Despesa", "Transferência"],
+            default=["Receita", "Despesa", "Transferência"],
+        )
+
+      with col_f6:
+        # <--- NOVO FILTRO DE STATUS (BUDGET vs EFETIVADO) --->
+        status_disponiveis = ["Efetivado", "Orçado"]
+        status_selecionado = st.multiselect(
+            "Status (Budget / Realizado)",
+            status_disponiveis,
+            default=status_disponiveis,
+        )
 
     # Aplicar filtros no DataFrame
     if ano_selecionado:
@@ -139,6 +160,8 @@ if aba == "Dashboard":
       df_temp = df_temp[df_temp["Categoria"].isin(categoria_selecionada)]
     if filtro_tipo_lanc:
       df_temp = df_temp[df_temp["Tipo"].isin(filtro_tipo_lanc)]
+    if status_selecionado:
+      df_temp = df_temp[df_temp["Status"].isin(status_selecionado)]
 
     if df_temp.empty:
       st.warning(
@@ -308,6 +331,8 @@ elif aba == "Lançamentos":
   else:
     df_lanc = st.session_state.lancamentos.copy()
     df_lanc["Data"] = pd.to_datetime(df_lanc["Data"]).dt.date
+    if "Status" not in df_lanc.columns:
+      df_lanc["Status"] = "Efetivado"
 
     with st.expander("🔍 Filtros Avançados e Busca Global", expanded=True):
       col_b1, col_b2 = st.columns([2, 1])
@@ -333,16 +358,24 @@ elif aba == "Lançamentos":
         cat_disp = st.session_state.categorias + ["Transferência"]
         filtro_cat = st.multiselect("Categorias", cat_disp, default=[])
       with col_f3:
-        min_data = df_lanc["Data"].min()
-        max_data = df_lanc["Data"].max()
-        periodo_datas = st.date_input(
-            "Intervalo de Datas",
-            value=(min_data, max_data),
-            min_value=min_data,
-            max_value=max_data,
+        status_disp = ["Efetivado", "Orçado"]
+        filtro_status_lanc = st.multiselect(
+            "Status", status_disp, default=status_disp
         )
 
-    df_filtrado = df_lanc[df_lanc["Tipo"].isin(tipos_filtro)]
+      min_data = df_lanc["Data"].min()
+      max_data = df_lanc["Data"].max()
+      periodo_datas = st.date_input(
+          "Intervalo de Datas",
+          value=(min_data, max_data),
+          min_value=min_data,
+          max_value=max_data,
+      )
+
+    df_filtrado = df_lanc[
+        df_lanc["Tipo"].isin(tipos_filtro)
+        & df_lanc["Status"].isin(filtro_status_lanc)
+    ]
 
     if busca_texto:
       termo = busca_texto.lower()
@@ -479,6 +512,16 @@ elif aba == "Lançamentos":
               nova_data = st.date_input(
                   "Data", value=pd.to_datetime(reg_atual["Data"])
               )
+              status_atual_reg = (
+                  reg_atual["Status"]
+                  if "Status" in reg_atual
+                  else "Efetivado"
+              )
+              novo_status = st.selectbox(
+                  "Status",
+                  ["Efetivado", "Orçado"],
+                  index=["Efetivado", "Orçado"].index(status_atual_reg),
+              )
 
             btn_salvar_edicao = st.form_submit_button(
                 "💾 Salvar Alterações", use_container_width=True
@@ -501,6 +544,9 @@ elif aba == "Lançamentos":
               )
               st.session_state.lancamentos.loc[id_para_editar, "Data"] = (
                   nova_data
+              )
+              st.session_state.lancamentos.loc[id_para_editar, "Status"] = (
+                  novo_status
               )
               st.success(f"Lançamento ID {id_para_editar} atualizado com sucesso!")
               st.rerun()
@@ -556,9 +602,21 @@ elif aba == "Lançamentos":
 elif aba == "Cadastro":
   st.title("💵 Registrar Lançamento")
 
-  tipo = st.selectbox(
-      "Tipo de Lançamento", ["Receita", "Despesa", "Transferência"]
-  )
+  col_tipo_cad, col_status_cad = st.columns(2)
+  with col_tipo_cad:
+    tipo = st.selectbox(
+        "Tipo de Lançamento", ["Receita", "Despesa", "Transferência"]
+    )
+  with col_status_cad:
+    status_lancamento = st.selectbox(
+        "Status",
+        ["Efetivado", "Orçado"],
+        help=(
+            "Use 'Orçado' para previsões/planejamento e 'Efetivado' para o que"
+            " já aconteceu."
+        ),
+    )
+
   st.markdown("---")
 
   col_origem, col_dest = st.columns(2)
@@ -703,6 +761,7 @@ elif aba == "Cadastro":
             data_parcela.date(),
             parcela_str,
             modo_valor,
+            status_lancamento,
         ])
 
       df_novos = pd.DataFrame(
@@ -717,6 +776,7 @@ elif aba == "Cadastro":
               "Data",
               "Parcelas",
               "Modo Valor",
+              "Status",
           ],
       )
       st.session_state.lancamentos = pd.concat(
@@ -997,6 +1057,8 @@ elif aba == "Backup & Segurança":
             if "lancamentos.csv" in arquivos_no_zip:
               with zip_ref.open("lancamentos.csv") as f:
                 st.session_state.lancamentos = pd.read_csv(f)
+                if "Status" not in st.session_state.lancamentos.columns:
+                  st.session_state.lancamentos["Status"] = "Efetivado"
 
             if "metadados.json" in arquivos_no_zip:
               with zip_ref.open("metadados.json") as f:
@@ -1016,6 +1078,8 @@ elif aba == "Backup & Segurança":
             st.session_state.lancamentos = pd.DataFrame(
                 conteudo["lancamentos"]
             )
+            if "Status" not in st.session_state.lancamentos.columns:
+              st.session_state.lancamentos["Status"] = "Efetivado"
           if "categorias" in conteudo:
             st.session_state.categorias = conteudo["categorias"]
           if "contas" in conteudo:
@@ -1026,6 +1090,8 @@ elif aba == "Backup & Segurança":
 
         elif extensao == "csv":
           df_importado = pd.read_csv(arquivo_subido)
+          if "Status" not in df_importado.columns:
+            df_importado["Status"] = "Efetivado"
           st.session_state.lancamentos = pd.concat(
               [st.session_state.lancamentos, df_importado], ignore_index=True
           )
@@ -1033,6 +1099,8 @@ elif aba == "Backup & Segurança":
 
         elif extensao in ["xlsx", "xls"]:
           df_importado = pd.read_excel(arquivo_subido)
+          if "Status" not in df_importado.columns:
+            df_importado["Status"] = "Efetivado"
           st.session_state.lancamentos = pd.concat(
               [st.session_state.lancamentos, df_importado], ignore_index=True
           )
@@ -1062,7 +1130,7 @@ elif aba == "Backup & Segurança":
             "cartoes": st.session_state.cartoes,
         }
         with open("meu_banco.json", "w", encoding="utf-8") as f:
-          json.dump(dados_locais, f, ensure_ascii=False, indent=4, default=str)
+          json.dump(dados_locais, f, ensure_alpha=False, indent=4, default=str)
         st.success("Dados salvos com sucesso no arquivo 'meu_banco.json'!")
 
     with col_l2:
@@ -1073,6 +1141,8 @@ elif aba == "Backup & Segurança":
             st.session_state.lancamentos = pd.DataFrame(
                 dados_locais["lancamentos"]
             )
+            if "Status" not in st.session_state.lancamentos.columns:
+              st.session_state.lancamentos["Status"] = "Efetivado"
             st.session_state.categorias = dados_locais["categorias"]
             st.session_state.contas = dados_locais["contas"]
             if "cartoes" in dados_locais:
