@@ -36,7 +36,7 @@ if "lancamentos" not in st.session_state:
           "Data",
           "Parcelas",
           "Modo Valor",
-          "Status",  # <--- NOVA COLUNA ADICIONADA
+          "Status",
       ]
   )
 
@@ -86,7 +86,6 @@ if aba == "Dashboard":
   st.title("📊 Dashboard Financeiro")
 
   if not st.session_state.lancamentos.empty:
-    # Garantir que a coluna Data seja datetime e Status exista
     df_temp = st.session_state.lancamentos.copy()
     df_temp["Data"] = pd.to_datetime(df_temp["Data"])
     if "Status" not in df_temp.columns:
@@ -140,7 +139,6 @@ if aba == "Dashboard":
         )
 
       with col_f6:
-        # <--- NOVO FILTRO DE STATUS (BUDGET vs EFETIVADO) --->
         status_disponiveis = ["Efetivado", "Orçado"]
         status_selecionado = st.multiselect(
             "Status (Budget / Realizado)",
@@ -168,7 +166,6 @@ if aba == "Dashboard":
           "Nenhum lançamento encontrado com os filtros selecionados no momento."
       )
     else:
-      # Definir formato de agrupamento
       if tipo_periodo == "Mensal":
         df_temp["Periodo"] = df_temp["Data"].dt.to_period("M").astype(str)
       elif tipo_periodo == "Trimestral":
@@ -188,7 +185,6 @@ if aba == "Dashboard":
       else:
         df_temp["Periodo"] = df_temp["Data"].dt.year.astype(str)
 
-      # Agrupar receitas e despesas por período
       df_rec_m = (
           df_temp[df_temp["Tipo"] == "Receita"]
           .groupby("Periodo")["Valor"]
@@ -232,8 +228,6 @@ if aba == "Dashboard":
       st.dataframe(df_styled, use_container_width=True)
 
       st.markdown("---")
-
-      # ==================== GRÁFICOS VISUAIS ====================
       st.subheader("📈 Análise Gráfica Dinâmica")
 
       col_g1, col_g2 = st.columns(2)
@@ -1130,7 +1124,7 @@ elif aba == "Backup & Segurança":
             "cartoes": st.session_state.cartoes,
         }
         with open("meu_banco.json", "w", encoding="utf-8") as f:
-          json.dump(dados_locais, f, ensure_alpha=False, indent=4, default=str)
+          json.dump(dados_locais, f, ensure_ascii=False, indent=4, default=str)
         st.success("Dados salvos com sucesso no arquivo 'meu_banco.json'!")
 
     with col_l2:
