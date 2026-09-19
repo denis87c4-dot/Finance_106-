@@ -1029,6 +1029,72 @@ elif aba == "Cartões de Crédito":
             ),
         )
 
+      # ==================== NOVA FERRAMENTA: LANÇAR PAGAMENTO DE FATURA (EX: DIA 26) ====================
+      st.markdown("---")
+      st.markdown(f"💳 **Registrar Pagamento de Fatura para: {cartao_selecionado}**")
+      st.write(
+          "Para abater o saldo devedor do cartão sem precisar cadastrar novas"
+          " compras passadas, faça um registro de pagamento/transferência (ex:"
+          " Conta Corrente ➔ Cartão)."
+      )
+
+      with st.form("form_pagamento_fatura"):
+        col_p1, col_p2, col_p3 = st.columns(3)
+        with col_p1:
+          conta_origem_pag = st.selectbox(
+              "Conta de Origem do Dinheiro",
+              [c for c in st.session_state.contas if c != cartao_selecionado],
+          )
+        with col_p2:
+          valor_pagamento = st.number_input(
+              "Valor do Pagamento (R$)", min_value=0.0, step=10.0, format="%.2f"
+          )
+        with col_p3:
+          data_pagamento = st.date_input("Data do Pagamento (Ex: Dia 26)")
+
+        btn_lancar_pagamento = st.form_submit_button(
+            "✅ Registrar Pagamento de Fatura", use_container_width=True
+        )
+
+        if btn_lancar_pagamento:
+          if valor_pagamento <= 0:
+            st.error("O valor do pagamento deve ser maior que zero.")
+          else:
+            # Criamos um registro do tipo Transferência para pagar a fatura
+            novo_pag_df = pd.DataFrame(
+                [[
+                    "Transferência",
+                    conta_origem_pag,
+                    cartao_selecionado,
+                    "Pagamento de Fatura",
+                    f"Pagamento Fatura {cartao_selecionado}",
+                    valor_pagamento,
+                    data_pagamento,
+                    "Única",
+                    "Integral",
+                    "Efetivado",
+                ]],
+                columns=[
+                    "Tipo",
+                    "Conta",
+                    "Conta Destino",
+                    "Categoria",
+                    "Descrição",
+                    "Valor",
+                    "Data",
+                    "Parcelas",
+                    "Modo Valor",
+                    "Status",
+                ],
+            )
+            st.session_state.lancamentos = pd.concat(
+                [st.session_state.lancamentos, novo_pag_df], ignore_index=True
+            )
+            st.success(
+                f"Pagamento de R$ {valor_pagamento:,.2f} registrado com sucesso!"
+            )
+            st.rerun()
+
       st.markdown("---")
       st.markdown(
           f"### Lançamentos Vinculados ao Cartão: **{cartao_selecionado}**"
