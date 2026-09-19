@@ -96,6 +96,7 @@ if aba == "Dashboard":
     st.subheader("🎯 Controle Orçamentário: Budget vs. Efetivado por Categoria")
 
     df_temp["AnoMes"] = df_temp["Data"].dt.to_period("M").astype(str)
+    # Ordenar meses do mais recente para o mais antigo (mês atual em evidência)
     meses_disponiveis = sorted(df_temp["AnoMes"].unique().tolist(), reverse=True)
 
     if not meses_disponiveis:
@@ -190,8 +191,9 @@ if aba == "Dashboard":
         )
 
       with col_f2:
+        # Anos ordenados do mais recente para o mais antigo (decrescente)
         anos_disponiveis = sorted(
-            df_temp["Data"].dt.year.dropna().unique().tolist()
+            df_temp["Data"].dt.year.dropna().unique().tolist(), reverse=True
         )
         if not anos_disponiveis:
           anos_disponiveis = [pd.Timestamp.now().year]
