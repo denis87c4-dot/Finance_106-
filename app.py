@@ -1,6 +1,7 @@
 import io
 import json
 import zipfile
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -16,6 +17,7 @@ aba = st.sidebar.radio(
     "Navegação",
     [
         "Dashboard",
+        "Statistics",
         "Lançamentos",
         "Cadastro",
         "Cadastro de Categorias e Contas",
@@ -328,11 +330,7 @@ if aba == "Dashboard":
 
       with col_g1:
         st.markdown("##### 🌊 Cash Flow vs. Cumulative")
-
-        # ==================== GRÁFICO COM CASH FLOW VERMELHO QUANDO < 0 ====================
         fig_linhas = go.Figure()
-
-        # Linha Cumulative (Azul)
         fig_linhas.add_trace(
             go.Scatter(
                 x=df_resumo["Período"],
@@ -343,7 +341,6 @@ if aba == "Dashboard":
             )
         )
 
-        # Separar o Cash Flow positivo (verde) e negativo (vermelho) para colorir a linha dinamicamente
         cf_positivo = df_resumo["Cash Flow"].apply(
             lambda x: x if x >= 0 else None
         )
@@ -361,18 +358,16 @@ if aba == "Dashboard":
                 connectgaps=True,
             )
         )
-
         fig_linhas.add_trace(
             go.Scatter(
                 x=df_resumo["Período"],
                 y=cf_negativo,
                 mode="lines+markers",
                 name="Cash Flow (Negativo)",
-                line=dict(color="#EF553B", width=3),  # Vermelho em destaque
+                line=dict(color="#EF553B", width=3),
                 connectgaps=True,
             )
         )
-
         fig_linhas.update_layout(
             plot_bgcolor="rgba(0,0,0,0)",
             paper_bgcolor="rgba(0,0,0,0)",
@@ -382,7 +377,6 @@ if aba == "Dashboard":
             margin=dict(l=10, r=10, t=10, b=10),
         )
         st.plotly_chart(fig_linhas, use_container_width=True)
-        # =================================================================================
 
       with col_g2:
         st.markdown("##### 📊 Receitas (Income) vs. Despesas (Expense)")
@@ -392,7 +386,6 @@ if aba == "Dashboard":
             var_name="Tipo",
             value_name="Valor",
         )
-
         fig_barras = px.bar(
             df_melt_barras,
             x="Período",
@@ -429,6 +422,226 @@ if aba == "Dashboard":
         )
   else:
     st.info("Nenhum lançamento registrado ainda.")
+
+
+# ==================== STATISTICS (ESTATÍSTICAS AVANÇADAS & IA) ====================
+elif aba == "Statistics":
+  st.title("📈 Statistics & Advanced Analytics")
+  st.write(
+      "Análise estatística profunda dos seus dados financeiros, com parâmetros"
+      " avançados e interpretação analítica automatizada."
+  )
+
+  if st.session_state.lancamentos.empty:
+    st.info("Nenhum lançamento registrado para gerar estatísticas.")
+  else:
+    df_stat = st.session_state.lancamentos.copy()
+    df_stat["Data"] = pd.to_datetime(df_stat["Data"])
+    if "Status" not in df_stat.columns:
+      df_stat["Status"] = "Efetivado"
+
+    # ==================== FILTROS PODEROSOS DE STATISTICS ====================
+    st.markdown("---")
+    st.markdown("### 🔍 Filtros Poderosos (Statistics)")
+    with st.expander("🛠️ Filtrar Dados para Análise Estatística", expanded=True):
+      col_s1, col_s2, col_s3 = st.columns(3)
+
+      with col_s1:
+        anos_stat = sorted(
+            df_stat["Data"].dt.year.dropna().unique().tolist(), reverse=True
+        )
+        if not anos_stat:
+          anos_stat = [pd.Timestamp.now().year]
+        ano_stat_sel = st.multiselect("Filtrar Anos", anos_stat, default=anos_stat)
+
+      with col_s2:
+        contas_stat = st.session_state.contas
+        conta_stat_sel = st.multiselect(
+            "Filtrar Contas/Cartões", contas_stat, default=contas_stat
+        )
+
+      with col_s3:
+        cat_stat = st.session_state.categorias
+        cat_stat_sel = st.multiselect(
+            "Filtrar Categorias", cat_stat, default=cat_stat
+        )
+
+      col_s4, col_s5 = st.columns(2)
+      with col_s4:
+        tipo_stat_sel = st.multiselect(
+            "Tipo de Lançamento",
+            ["Receita", "Despesa", "Transferência"],
+            default=["Receita", "Despesa", "Transferência"],
+        )
+      with col_s5:
+        status_stat_sel = st.multiselect(
+            "Status", ["Efetivado", "Orçado"], default=["Efetivado", "Orçado"]
+        )
+
+    # Aplicar filtros
+    if ano_stat_sel:
+      df_stat = df_stat[df_stat["Data"].dt.year.isin(ano_stat_sel)]
+    if conta_stat_sel:
+      df_stat = df_stat[
+          df_stat["Conta"].isin(conta_stat_sel)
+          | df_stat["Conta Destino"].isin(conta_stat_sel)
+      ]
+    if cat_stat_sel:
+      df_stat = df_stat[df_stat["Categoria"].isin(cat_stat_sel)]
+    if tipo_stat_sel:
+      df_stat = df_stat[df_stat["Tipo"].isin(tipo_stat_sel)]
+    if status_stat_sel:
+      df_stat = df_stat[df_stat["Status"].isin(status_stat_sel)]
+
+    if df_stat.empty:
+      st.warning("Nenhum dado encontrado com os filtros selecionados.")
+    else:
+      # Criar coluna Ano-Mês para a seletor de mês específico
+      df_stat["AnoMes"] = df_stat["Data"].dt.to_period("M").astype(str)
+      meses_stat = sorted(df_stat["AnoMes"].unique().tolist(), reverse=True)
+
+      st.markdown("---")
+      col_m_sel, _ = st.columns([2, 2])
+      with col_m_sel:
+        mes_escolhido_stat = st.selectbox(
+            "📅 Selecione o Mês Específico para Análise Detalhada",
+            meses_stat,
+        )
+
+      # Filtrar dados do mês selecionado
+      df_mes_stat = df_stat[df_stat["AnoMes"] == mes_escolhido_stat]
+
+      st.markdown("---")
+      st.subheader(
+          f"📊 Parâmetros Estatísticos - Período: {mes_escolhido_stat}"
+      )
+
+      if df_mes_stat.empty:
+        st.info(f"Sem movimentações no mês {mes_escolhido_stat}.")
+      else:
+        valores_serie = df_mes_stat["Valor"]
+
+        # Cálculos Estatísticos
+        media = valores_serie.mean()
+        mediana = valores_serie.median()
+        desvio_padrao = (
+            valores_serie.std() if len(valores_serie) > 1 else 0.0
+        )
+        kurtose = (
+            valores_serie.kurtosis() if len(valores_serie) > 3 else 0.0
+        )
+        skewness = valores_serie.skew() if len(valores_serie) > 2 else 0.0
+
+        # Média Móvel de 3 meses (considerando o histórico global até o mês selecionado)
+        df_stat["Periodo_Period"] = pd.to_datetime(df_stat["AnoMes"])
+        df_historico_mensal = (
+            df_stat.groupby("AnoMes")["Valor"].sum().reset_index()
+        )
+        df_historico_mensal = df_historico_mensal.sort_values("AnoMes")
+        df_historico_mensal["MM3"] = (
+            df_historico_mensal["Valor"].rolling(window=3, min_periods=1).mean()
+        )
+
+        match_mm = df_historico_mensal[
+            df_historico_mensal["AnoMes"] == mes_escolhido_stat
+        ]
+        media_movel_3m = (
+            match_mm["MM3"].values[0]
+            if not match_mm.empty
+            else valores_serie.mean()
+        )
+
+        # Coeficiente de Correlação entre Receitas e Despesas no histórico geral
+        df_pivot_corr = (
+            df_stat.pivot_table(
+                index="AnoMes",
+                columns="Tipo",
+                values="Valor",
+                aggfunc="sum",
+            )
+            .fillna(0)
+            .reset_index()
+        )
+        if "Receita" in df_pivot_corr.columns and "Despesa" in df_pivot_corr.columns:
+          correlacao = df_pivot_corr["Receita"].corr(
+              df_pivot_corr["Despesa"]
+          )
+          if pd.isna(correlacao):
+            correlacao = 0.0
+        else:
+          correlacao = 0.0
+
+        # Montar a tabelinha bonita
+        df_tabela_stat = pd.DataFrame({
+            "Parâmetro Estatístico": [
+                "Média (Mean)",
+                "Mediana (Median)",
+                "Média Móvel (3 Meses)",
+                "Desvio Padrão (Std Dev)",
+                "Curtose (Kurtosis)",
+                "Assimetria (Skewness)",
+                "Correlação (Receita vs Despesa)",
+            ],
+            "Valor Calculado": [
+                f"R$ {media:,.2f}",
+                f"R$ {mediana:,.2f}",
+                f"R$ {media_movel_3m:,.2f}",
+                f"R$ {desvio_padrao:,.2f}",
+                f"{kurtose:.2f}",
+                f"{skewness:.2f}",
+                f"{correlacao:.2f}",
+            ],
+        })
+
+        st.dataframe(
+            df_tabela_stat, use_container_width=True, hide_index=True
+        )
+
+        # ==================== BLOCO DE ANÁLISE INTELIGENTE (IA) ====================
+        st.markdown("---")
+        st.subheader("🤖 Análise Inteligente de IA & Padrões")
+
+        # Gerar o texto interpretativo com base nos dados estatísticos calculados
+        qtd_lanc = len(df_mes_stat)
+        total_mov = valores_serie.sum()
+
+        # Lógica de interpretação automática
+        interpretacao_kurtose = (
+            "alta concentração de valores em torno da média (distribuição leptocúrtica)"
+            if kurtose > 1
+            else (
+                "dispersão equilibrada de valores (distribuição mesocúrtica/platicúrtica)"
+                if kurtose >= -1
+                else "ampla dispersão sem padrão concentrado"
+            )
+        )
+
+        interpretacao_skew = (
+            "viés positivo (cauda longa à direita, indicando alguns lançamentos de valores expressivamente altos)"
+            if skewness > 0.5
+            else (
+                "viés negativo (cauda à esquerda, indicando predominância de valores menores com poucos picos baixos)"
+                if skewness < -0.5
+                else "distribuição simétrica dos lançamentos"
+            )
+        )
+
+        status_tendencia = (
+            "crescimento ou resiliência financeira"
+            if media >= (media_movel_3m * 0.9)
+            else "alerta de queda ou contratação de despesas acima da média trimestral"
+        )
+
+        st.markdown(
+            f"""> 🧠 **Relatório Analítico Automatizado para {mes_escolhido_stat}:**
+> 
+> * **Volume de Transações:** No período avaliado, foram registradas **{qtd_lanc} movimentações**, totalizando um montante de **R$ {total_mov:,.2f}**.
+> * **Comportamento e Curtose (Kurt = `{kurtose:.2f}`):** O perfil dos lançamentos apresenta **{interpretacao_kurtose}**. Isso significa que o risco de oscilações bruscas no caixa por itens fora da curva é {('baixo' if kurtose <= 1 else 'moderado/alto')}.
+> * **Assimetria (Skew = `{skewness:.2f}`):** Os dados demonstram **{interpretacao_skew}**. 
+> * **Tendência de Médias:** A média móvel trimestral aponta para **R$ {media_movel_3m:,.2f}**, refletindo um cenário de **{status_tendencia}**.
+> * **Correlação Global:** O índice de correlação entre entradas e saídas no histórico é de **`{correlacao:.2f}`**, indicando o grau de acompanhamento financeiro entre o que entra e o que sai.
+"""
+        )
 
 
 # ==================== LANÇAMENTOS (GERENCIAMENTO INTELIGENTE) ====================
@@ -1212,7 +1425,7 @@ elif aba == "Backup & Segurança":
       st.success("Pacote ZIP gerado com sucesso!")
 
   with tab_imp:
-    st.subheader("Importار Dados (ZIP, JSON, CSV ou Excel)")
+    st.subheader("Importar Dados (ZIP, JSON, CSV ou Excel)")
     st.write(
         "Faça upload de arquivos de backup anteriores (incluindo o arquivo"
         " .zip) para restaurar o seu sistema."
@@ -1280,7 +1493,7 @@ elif aba == "Backup & Segurança":
           st.session_state.lancamentos = pd.concat(
               [st.session_state.lancamentos, df_importado], ignore_index=True
           )
-          st.success("Denison de Jesus Oliveira", ignore_index=True) and st.success("Lançamentos do Excel adicionados com sucesso!")
+          st.success("Lançamentos do Excel adicionados com sucesso!")
 
         st.rerun()
       except Exception as e:
