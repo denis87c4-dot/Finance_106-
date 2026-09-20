@@ -1097,12 +1097,12 @@ elif aba == "Financial Analysis":
         st.info(f"💡 Assumir esta parcela de **R$ {pmt_calculado:,.2f}** compromete aproximadamente **{(pmt_calculado / (abs(media_caixa_periodo) if media_caixa_periodo != 0 else 1) * 100):.1f}%** do seu fluxo líquido médio por período.")
 
 
-# ==================== IA & ASSISTANT (INTELIGÊNCIA ARTIFICIAL & CHAT INTERATIVO) ====================
+# ==================== IA & ASSISTANT (INTELIGÊNCIA ARTIFICIAL REAL COM GEMINI API) ====================
 elif aba == "🤖 IA & Assistant":
   st.title("🤖 Central de Inteligência Artificial & Gemini Assistant")
   st.write(
-      "Análise preditiva profunda dos seus dados financeiros combinada com um assistente de inteligência artificial "
-      "pronto para responder perguntas instantâneas sobre os seus lançamentos."
+      "Converse diretamente com o **Google Gemini** conectado aos seus dados financeiros reais. "
+      "Faça perguntas complexas, peça conselhos de economia ou diagnósticos detalhados."
   )
 
   if st.session_state.lancamentos.empty:
@@ -1113,22 +1113,19 @@ elif aba == "🤖 IA & Assistant":
     if "Status" not in df_ia.columns:
       df_ia["Status"] = "Efetivado"
 
-    tab_relatorio, tab_chat = st.tabs(["🔮 Relatório Preditivo Avançado", "💬 Chat Interativo com os Seus Dados"])
+    tab_relatorio, tab_chat = st.tabs(["🔮 Relatório Preditivo Avançado", "💬 Chat Inteligente com Gemini"])
 
     with tab_relatorio:
       st.subheader("🧠 Diagnóstico Inteligente & Revelações Surpreendentes")
-      st.write("Abaixo está uma varredura heurística dos seus dados correntes, identificando padrões invisíveis, riscos e projeções.")
+      st.write("Varredura heurística dos seus dados correntes, identificando padrões invisíveis, riscos e projeções.")
 
       total_geral_receitas = df_ia[df_ia["Tipo"] == "Receita"]["Valor"].sum()
       total_geral_despesas = df_ia[df_ia["Tipo"] == "Despesa"]["Valor"].sum()
       saldo_global = total_geral_receitas - total_geral_despesas
 
-      # Maior categoria de gasto
       df_despesas_cat = df_ia[df_ia["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum().reset_index()
       maior_cat = df_despesas_cat.sort_values(by="Valor", ascending=False).iloc[0]["Categoria"] if not df_despesas_cat.empty else "N/A"
       maior_val_cat = df_despesas_cat.sort_values(by="Valor", ascending=False).iloc[0]["Valor"] if not df_despesas_cat.empty else 0.0
-
-      # Concentração de gastos
       pct_maior_cat = (maior_val_cat / total_geral_despesas * 100) if total_geral_despesas > 0 else 0.0
 
       col_ia1, col_ia2, col_ia3 = st.columns(3)
@@ -1142,21 +1139,18 @@ elif aba == "🤖 IA & Assistant":
       st.markdown("---")
       st.markdown("### 🔍 Insights & Revelações de Comportamento")
 
-      # Lógica de IA heurística avançada para surpreender o usuário
       alerta_concentracao = "⚠️ **Alerta de Alocação Crítica:** " if pct_maior_cat > 40 else "✅ **Alocação Saudável:** "
-      alerta_texto_conc = f"A categoria **{maior_cat}** absorve sozinha **{pct_maior_cat:.1f}%** de todo o seu dinheiro de saída. Se o seu objetivo é acelerar patrimônio, este é o ponto exato de intervenção." if pct_maior_cat > 40 else f"Seus gastos estão bem distribuídos entre as categorias, sendo **{maior_cat}** a principal ({pct_maior_cat:.1f}%)."
-
-      projecao_futura_12m = saldo_global * 1.05 # Estimativa de crescimento tendencial
+      alerta_texto_conc = f"A categoria **{maior_cat}** absorve sozinha **{pct_maior_cat:.1f}%** de todo o seu dinheiro de saída." if pct_maior_cat > 40 else f"Seus gastos estão bem distribuídos, sendo **{maior_cat}** a principal ({pct_maior_cat:.1f}%)."
+      projecao_futura_12m = saldo_global * 1.05
 
       st.info(
           f"""
           * {alerta_concentracao} {alerta_texto_conc}
-          * 🔮 **Projeção de Trajetória Futura:** Mantendo o ritmo atual de entradas e saídas, a tendência estimada para o próximo ciclo aponta para um fluxo líquido de aproximadamente **R$ {projecao_futura_12m:,.2f}**.
-          * 💡 **Sugestão de Otimização Automática:** Com base nas repetições de descrições e histórico de faturas, a IA sugere o estabelecimento de um teto orçamentário rígido para o início de cada mês na aba de Dashboard.
+          * 🔮 **Projeção de Trajetória Futura:** Mantendo o ritmo atual, a tendência estimada para o próximo ciclo aponta para um fluxo líquido de aproximadamente **R$ {projecao_futura_12m:,.2f}**.
+          * 💡 **Sugestão de Otimização:** Estabeleça tetos orçamentários rígidos por categoria no início de cada mês na aba de Dashboard.
           """
       )
 
-      # Gráfico de radar ou distribuição de despesas por categoria para ilustrar a IA
       if not df_despesas_cat.empty:
         fig_pie = px.pie(
             df_despesas_cat, names="Categoria", values="Valor",
@@ -1168,65 +1162,65 @@ elif aba == "🤖 IA & Assistant":
         st.plotly_chart(fig_pie, use_container_width=True)
 
     with tab_chat:
-      st.subheader("💬 Chat Interativo com os Seus Dados (Gemini Simulator / RAG Local)")
-      st.write("Faça perguntas diretas sobre os seus lançamentos e obtenha respostas automáticas instantâneas estruturadas pelo assistente.")
+      st.subheader("💬 Chat com IA Real (Google Gemini)")
+      st.write("Faça qualquer pergunta sobre os seus gastos, peça dicas de como economizar ou análises detalhadas.")
 
-      # Inicializar histórico de chat na sessão se não existir
-      if "chat_history" not in st.session_state:
-        st.session_state.chat_history = [
-            {"role": "assistant", "content": "Olá, Denison! Sou o seu assistente financeiro inteligente conectado aos seus lançamentos. O que gostaria de saber sobre as suas finanças hoje?"}
+      gemini_api_key = st.text_input(
+          "🔑 Insira sua Chave de API do Google Gemini (ou configure via st.secrets)",
+          type="password",
+          help="Você pode obter uma chave gratuita no Google AI Studio."
+      )
+
+      if "chat_history_gemini" not in st.session_state:
+        st.session_state.chat_history_gemini = [
+            {"role": "assistant", "content": "Olá, Denison! Estou conectado aos seus dados financeiros através do Google Gemini. O que você gostaria de analisar ou perguntar?"}
         ]
 
-      # Exibir histórico de conversas
-      for message in st.session_state.chat_history:
+      for message in st.session_state.chat_history_gemini:
         with st.chat_message(message["role"]):
           st.markdown(message["content"])
 
-      # Caixa de input do chat
-      user_query = st.chat_input("Digite sua pergunta (Ex: Qual foi minha maior despesa? Quanto tenho em receitas?)...")
+      user_prompt = st.chat_input("Converse com o Gemini sobre suas finanças...")
 
-      if user_query:
-        # Adicionar mensagem do usuário
-        st.session_state.chat_history.append({"role": "user", "content": user_query})
+      if user_prompt:
+        st.session_state.chat_history_gemini.append({"role": "user", "content": user_prompt})
         with st.chat_message("user"):
-          st.markdown(user_query)
+          st.markdown(user_prompt)
 
-        # Processar resposta inteligente baseada no DataFrame real de lançamentos
-        query_lower = user_query.lower()
-        resposta_ia = ""
-
-        if "maior despesa" in query_lower or "gastei mais" in query_lower:
-          df_esp = df_ia[df_ia["Tipo"] == "Despesa"]
-          if not df_esp.empty:
-            maior = df_esp.loc[df_esp["Valor"].idxmax()]
-            resposta_ia = f"🔍 A sua maior despesa registrada foi **{maior['Descrição']}** na categoria **{maior['Categoria']}**, no valor de **R$ {maior['Valor']:,.2f}**, datada de {pd.to_datetime(maior['Data']).strftime('%d/%m/%Y')} (Conta: {maior['Conta']})."
-          else:
-            resposta_ia = "Não encontrei despesas registradas no momento."
-
-        elif "receita" in query_lower or "ganhei" in query_lower or "entrada" in query_lower:
-          tot_rec = df_ia[df_ia["Tipo"] == "Receita"]["Valor"].sum()
-          qtd_rec = len(df_ia[df_ia["Tipo"] == "Receita"])
-          resposta_ia = f"💵 Você possui um total de **{qtd_rec} lançamentos de receita**, somando o montante de **R$ {tot_rec:,.2f}**."
-
-        elif "saldo" in query_lower or "total" in query_lower:
-          tot_r = df_ia[df_ia["Tipo"] == "Receita"]["Valor"].sum()
-          tot_d = df_ia[df_ia["Tipo"] == "Despesa"]["Valor"].sum()
-          sald = tot_r - tot_d
-          resposta_ia = f"📊 O balanço atual dos dados filtrados é:\n* **Receitas:** R$ {tot_r:,.2f}\n* **Despesas:** R$ {tot_d:,.2f}\n* **Saldo Líquido:** R$ {sald:,.2f}"
-
-        elif "categoria" in query_lower:
-          cats = ", ".join(st.session_state.categorias)
-          resposta_ia = f"📂 As categorias ativas cadastradas no sistema atualmente são: **{cats}**."
-
-        else:
-          # Resposta padrão inteligente caso a pergunta seja aberta
-          total_reg = len(df_ia)
-          resposta_ia = f"🤖 Analisei os seus **{total_reg} registros** no sistema. Posso te informar sobre maiores despesas, balanço de receitas, saldos líquidos ou status de contas. Tente perguntar algo como: *'Qual foi a minha maior despesa?'* ou *'Qual é o meu saldo total?'*."
-
-        # Adicionar resposta do assistente ao histórico
-        st.session_state.chat_history.append({"role": "assistant", "content": resposta_ia})
         with st.chat_message("assistant"):
-          st.markdown(resposta_ia)
+          with st.spinner("🤖 O Gemini está analisando seus lançamentos e preparando a resposta..."):
+            try:
+              import google.generativeai as genai
+
+              api_key_final = gemini_api_key
+              if not api_key_final and "GEMINI_API_KEY" in st.secrets:
+                api_key_final = st.secrets["GEMINI_API_KEY"]
+
+              if not api_key_final:
+                resposta_gemini = "⚠️ Por favor, insira a sua Chave de API do Google Gemini no campo acima para habilitar o chat inteligente."
+              else:
+                genai.configure(api_key=api_key_final)
+                
+                csv_resumido = df_ia.to_csv(index=False)
+                
+                prompt_sistema = f"""
+                Você é um consultor financeiro pessoal especialista de elite, integrado a um aplicativo de finanças.
+                Abaixo estão os dados dos lançamentos financeiros do usuário em formato CSV:
+                {csv_resumido}
+                
+                Responda à pergunta do usuário de forma analítica, prestativa, clara e em português, baseando-se estritamente nos dados acima.
+                Pergunta do usuário: {user_prompt}
+                """
+
+                model = genai.GenerativeModel('gemini-1.5-flash')
+                response = model.generate_content(prompt_sistema)
+                resposta_gemini = response.text
+
+            except Exception as e:
+              resposta_gemini = f"❌ Erro ao conectar com a API do Gemini: {e}\n\nCertifique-se de que a biblioteca `google-generativeai` está instalada e a chave de API é válida."
+
+            st.markdown(resposta_gemini)
+            st.session_state.chat_history_gemini.append({"role": "assistant", "content": resposta_gemini})
 
 
 # ==================== LANÇAMENTOS (GERENCIAMENTO INTELIGENTE) ====================
