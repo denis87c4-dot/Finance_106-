@@ -1213,7 +1213,7 @@ elif aba == "🤖 IA & Assistant":
                 """
 
                 # CORREÇÃO DO MODELO ATUALIZADO
-                model = genai.GenerativeModel('gemini-2.5-flash')
+                model = genai.GenerativeModel('gemini-3.6-flash')
                 response = model.generate_content(prompt_sistema)
                 resposta_gemini = response.text
 
