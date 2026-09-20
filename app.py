@@ -581,6 +581,116 @@ elif aba == "Statistics":
 
       df_periodo_stat = df_stat[df_stat["Periodo_Analise"] == periodo_escolhido_stat]
 
+      # ==================== PARÂMETROS ESTATÍSTICOS DETALHADOS ====================
+      st.markdown("---")
+      st.subheader(f"📊 Parâmetros Estatísticos - Período: {periodo_escolhido_stat}")
+
+      if df_periodo_stat.empty:
+        st.info(f"Sem movimentações no período {periodo_escolhido_stat}.")
+      else:
+        valores_serie = df_periodo_stat["Valor"]
+
+        media = valores_serie.mean()
+        mediana = valores_serie.median()
+        desvio_padrao = valores_serie.std() if len(valores_serie) > 1 else 0.0
+        kurtose = valores_serie.kurtosis() if len(valores_serie) > 3 else 0.0
+        skewness = valores_serie.skew() if len(valores_serie) > 2 else 0.0
+
+        # Cálculo de Média Móvel (3 períodos)
+        df_historico_todos = (
+            df_stat.groupby("Periodo_Analise")["Valor"].sum().reset_index()
+            .sort_values("Periodo_Analise")
+        )
+        df_historico_todos["MM3"] = df_historico_todos["Valor"].rolling(window=3, min_periods=1).mean()
+        
+        match_mm = df_historico_todos[df_historico_todos["Periodo_Analise"] == periodo_escolhido_stat]
+        media_movel_3m = match_mm["MM3"].values[0] if not match_mm.empty else valores_serie.mean()
+
+        # Correlação Receita vs Despesa
+        df_pivot_corr = (
+            df_stat.pivot_table(
+                index="Periodo_Analise",
+                columns="Tipo",
+                values="Valor",
+                aggfunc="sum",
+            )
+            .fillna(0)
+            .reset_index()
+        )
+        if "Receita" in df_pivot_corr.columns and "Despesa" in df_pivot_corr.columns:
+          correlacao = df_pivot_corr["Receita"].corr(df_pivot_corr["Despesa"])
+          if pd.isna(correlacao):
+            correlacao = 0.0
+        else:
+          correlacao = 0.0
+
+        df_tabela_stat = pd.DataFrame({
+            "Parâmetro Estatístico": [
+                "Média (Mean)",
+                "Mediana (Median)",
+                f"Média Móvel (3 {frequencia_stat}s)",
+                "Desvio Padrão (Std Dev)",
+                "Curtose (Kurtosis)",
+                "Assimetria (Skewness)",
+                "Correlação (Receita vs Despesa)",
+            ],
+            "Valor Calculado": [
+                f"R$ {media:,.2f}",
+                f"R$ {mediana:,.2f}",
+                f"R$ {media_movel_3m:,.2f}",
+                f"R$ {desvio_padrao:,.2f}",
+                f"{kurtose:.2f}",
+                f"{skewness:.2f}",
+                f"{correlacao:.2f}",
+            ],
+        })
+
+        st.dataframe(df_tabela_stat, use_container_width=True, hide_index=True)
+
+        # ==================== ANÁLISE INTELIGENTE DE IA & PADRÕES ====================
+        st.markdown("---")
+        st.subheader("🤖 Análise Inteligente de IA & Padrões")
+
+        qtd_lanc = len(df_periodo_stat)
+        total_mov = valores_serie.sum()
+
+        interpretacao_kurtose = (
+            "alta concentração de valores em torno da média (distribuição leptocúrtica)"
+            if kurtose > 1
+            else (
+                "dispersão equilibrada de valores (distribuição mesocúrtica/platicúrtica)"
+                if kurtose >= -1
+                else "ampla dispersão sem padrão concentrado"
+            )
+        )
+
+        interpretacao_skew = (
+            "viés positivo (cauda longa à direita, indicando alguns lançamentos de valores expressivamente altos)"
+            if skewness > 0.5
+            else (
+                "viés negativo (cauda à esquerda, indicando predominância de valores menores com poucos picos baixos)"
+                if skewness < -0.5
+                else "distribuição simétrica dos lançamentos"
+            )
+        )
+
+        status_tendencia = (
+            "crescimento ou resiliência financeira"
+            if media >= (media_movel_3m * 0.9)
+            else "alerta de queda ou contratação de despesas acima da média dos períodos anteriores"
+        )
+
+        st.markdown(
+            f"""> 🧠 **Relatório Analítico Automatizado para {periodo_escolhido_stat} ({frequencia_stat}):**
+> 
+> * **Volume de Transações:** No período avaliado, foram registradas **{qtd_lanc} movimentações**, totalizando um montante de **R$ {total_mov:,.2f}**.
+> * **Comportamento e Curtose (Kurt = `{kurtose:.2f}`):** O perfil dos lançamentos apresenta **{interpretacao_kurtose}**. Isso significa que o risco de oscilações bruscas no caixa por itens fora da curva é {('baixo' if kurtose <= 1 else 'moderado/alto')}.
+> * **Assimetria (Skew = `{skewness:.2f}`):** Os dados demonstram **{interpretacao_skew}**. 
+> * **Tendência de Médias:** A média móvel aponta para **R$ {media_movel_3m:,.2f}**, refletindo um cenário de **{status_tendencia}**.
+> * **Correlação Global:** O índice de correlação entre entradas e saídas no histórico é de **`{correlacao:.2f}`**, indicando o grau de acompanhamento financeiro entre o que entra e o que sai.
+"""
+        )
+
       # ==================== CURVA DE SINO DOS TOTAIS POR PERÍODO ====================
       st.markdown("---")
       st.subheader(f"🔔 Curva de Sino dos Totais ({frequencia_stat}) & Probabilidade P(X < x)")
