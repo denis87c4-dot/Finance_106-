@@ -323,6 +323,57 @@ if aba == "Dashboard":
 
       st.dataframe(df_styled, use_container_width=True)
 
+      # ==================== NOVO BLOCO: TRACKING DE DESCRIÇÕES POR MÊS ====================
+      st.markdown("---")
+      st.subheader("🏷️ Detalhamento de Gastos por Descrição e Categoria")
+      st.write(
+          "Acompanhe o ranking dos lançamentos detalhados por descrição com base"
+          " nos filtros ativos."
+      )
+
+      # Filtro auxiliar de mês específico para a tabela de descrição se o usuário quiser focar
+      meses_disc_disp = sorted(df_temp["AnoMes"].unique().tolist(), reverse=True)
+      if meses_disc_disp:
+        col_td1, col_td2 = st.columns([2, 2])
+        with col_td1:
+          mes_disc_escolhido = st.selectbox(
+              "Filtrar Mês Específico para Descrições",
+              ["Todos os Meses Filtrados"] + meses_disc_disp,
+          )
+        with col_td2:
+          tipo_disc_filtro = st.selectbox(
+              "Tipo para Rastreio de Descrição",
+              ["Despesa", "Receita", "Todos"],
+          )
+
+        df_tracking = df_temp.copy()
+        if mes_disc_escolhido != "Todos os Meses Filtrados":
+          df_tracking = df_tracking[
+              df_tracking["AnoMes"] == mes_disc_escolhido
+          ]
+        if tipo_disc_filtro != "Todos":
+          df_tracking = df_tracking[df_tracking["Tipo"] == tipo_disc_filtro]
+
+        if not df_tracking.empty:
+          # Agrupar por Descrição e Categoria para rastrear
+          df_grouped_desc = (
+              df_tracking.groupby(["Data", "Categoria", "Descrição", "Tipo", "Conta"])[
+                  "Valor"
+              ]
+              .sum()
+              .reset_index()
+              .sort_values(by="Valor", ascending=False)
+          )
+
+          st.dataframe(
+              df_grouped_desc.style.format({"Valor": "R$ {:,.2f}"}),
+              use_container_width=True,
+              hide_index=True,
+          )
+        else:
+          st.info("Nenhum registro encontrado para os critérios de rastreio.")
+      # =================================================================================
+
       st.markdown("---")
       st.subheader("📈 Análise Gráfica Dinâmica")
 
@@ -496,7 +547,7 @@ elif aba == "Statistics":
     if df_stat.empty:
       st.warning("Nenhum dado encontrado com os filtros selecionados.")
     else:
-      # Criar coluna Ano-Mês para a seletor de mês específico
+      # Criar coluna Ano-Mês para a seletor de mês específico (ordenado do mais recente para o mais antigo)
       df_stat["AnoMes"] = df_stat["Data"].dt.to_period("M").astype(str)
       meses_stat = sorted(df_stat["AnoMes"].unique().tolist(), reverse=True)
 
@@ -601,11 +652,9 @@ elif aba == "Statistics":
         st.markdown("---")
         st.subheader("🤖 Análise Inteligente de IA & Padrões")
 
-        # Gerar o texto interpretativo com base nos dados estatísticos calculados
         qtd_lanc = len(df_mes_stat)
         total_mov = valores_serie.sum()
 
-        # Lógica de interpretação automática
         interpretacao_kurtose = (
             "alta concentração de valores em torno da média (distribuição leptocúrtica)"
             if kurtose > 1
