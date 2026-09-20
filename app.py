@@ -1212,7 +1212,8 @@ elif aba == "🤖 IA & Assistant":
                 Pergunta do usuário: {user_prompt}
                 """
 
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                # CORREÇÃO DO MODELO ATUALIZADO
+                model = genai.GenerativeModel('gemini-2.5-flash')
                 response = model.generate_content(prompt_sistema)
                 resposta_gemini = response.text
 
