@@ -3,5 +3,6 @@ pandas
 numpy
 plotly
 scipy
-numpy-financial
 openpyxl
+numpy-financial
+google-generativeai
