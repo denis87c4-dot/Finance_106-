@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from scipy.stats import norm
 import streamlit as st
 
 # Configuração da página
@@ -323,7 +324,7 @@ if aba == "Dashboard":
 
       st.dataframe(df_styled, use_container_width=True)
 
-      # ==================== NOVO BLOCO: TRACKING DE DESCRIÇÕES POR MÊS ====================
+      # ==================== TRACKING DE DESCRIÇÕES POR MÊS ====================
       st.markdown("---")
       st.subheader("🏷️ Detalhamento de Gastos por Descrição e Categoria")
       st.write(
@@ -331,7 +332,6 @@ if aba == "Dashboard":
           " nos filtros ativos."
       )
 
-      # Filtro auxiliar de mês específico para a tabela de descrição se o usuário quiser focar
       meses_disc_disp = sorted(df_temp["AnoMes"].unique().tolist(), reverse=True)
       if meses_disc_disp:
         col_td1, col_td2 = st.columns([2, 2])
@@ -355,11 +355,10 @@ if aba == "Dashboard":
           df_tracking = df_tracking[df_tracking["Tipo"] == tipo_disc_filtro]
 
         if not df_tracking.empty:
-          # Agrupar por Descrição e Categoria para rastrear
           df_grouped_desc = (
-              df_tracking.groupby(["Data", "Categoria", "Descrição", "Tipo", "Conta"])[
-                  "Valor"
-              ]
+              df_tracking.groupby(
+                  ["Data", "Categoria", "Descrição", "Tipo", "Conta"]
+              )["Valor"]
               .sum()
               .reset_index()
               .sort_values(by="Valor", ascending=False)
@@ -372,7 +371,6 @@ if aba == "Dashboard":
           )
         else:
           st.info("Nenhum registro encontrado para os critérios de rastreio.")
-      # =================================================================================
 
       st.markdown("---")
       st.subheader("📈 Análise Gráfica Dinâmica")
@@ -547,7 +545,6 @@ elif aba == "Statistics":
     if df_stat.empty:
       st.warning("Nenhum dado encontrado com os filtros selecionados.")
     else:
-      # Criar coluna Ano-Mês para a seletor de mês específico (ordenado do mais recente para o mais antigo)
       df_stat["AnoMes"] = df_stat["Data"].dt.to_period("M").astype(str)
       meses_stat = sorted(df_stat["AnoMes"].unique().tolist(), reverse=True)
 
@@ -559,7 +556,6 @@ elif aba == "Statistics":
             meses_stat,
         )
 
-      # Filtrar dados do mês selecionado
       df_mes_stat = df_stat[df_stat["AnoMes"] == mes_escolhido_stat]
 
       st.markdown("---")
@@ -572,7 +568,6 @@ elif aba == "Statistics":
       else:
         valores_serie = df_mes_stat["Valor"]
 
-        # Cálculos Estatísticos
         media = valores_serie.mean()
         mediana = valores_serie.median()
         desvio_padrao = (
@@ -583,7 +578,6 @@ elif aba == "Statistics":
         )
         skewness = valores_serie.skew() if len(valores_serie) > 2 else 0.0
 
-        # Média Móvel de 3 meses (considerando o histórico global até o mês selecionado)
         df_stat["Periodo_Period"] = pd.to_datetime(df_stat["AnoMes"])
         df_historico_mensal = (
             df_stat.groupby("AnoMes")["Valor"].sum().reset_index()
@@ -602,7 +596,6 @@ elif aba == "Statistics":
             else valores_serie.mean()
         )
 
-        # Coeficiente de Correlação entre Receitas e Despesas no histórico geral
         df_pivot_corr = (
             df_stat.pivot_table(
                 index="AnoMes",
@@ -613,7 +606,10 @@ elif aba == "Statistics":
             .fillna(0)
             .reset_index()
         )
-        if "Receita" in df_pivot_corr.columns and "Despesa" in df_pivot_corr.columns:
+        if (
+            "Receita" in df_pivot_corr.columns
+            and "Despesa" in df_pivot_corr.columns
+        ):
           correlacao = df_pivot_corr["Receita"].corr(
               df_pivot_corr["Despesa"]
           )
@@ -622,7 +618,6 @@ elif aba == "Statistics":
         else:
           correlacao = 0.0
 
-        # Montar a tabelinha bonita
         df_tabela_stat = pd.DataFrame({
             "Parâmetro Estatístico": [
                 "Média (Mean)",
@@ -647,6 +642,112 @@ elif aba == "Statistics":
         st.dataframe(
             df_tabela_stat, use_container_width=True, hide_index=True
         )
+
+        # ==================== NOVA FERRAMENTA: DISTRIBUIÇÃO NORMAL (NORM.DIST & PROBABILIDADE < X) ====================
+        st.markdown("---")
+        st.subheader(
+            "🔔 Curva de Sino & Probabilidade P(X < x) [Estilo NORM.DIST]"
+        )
+        st.write(
+            "Brinque com o valor limite **x** abaixo para descobrir qual é a"
+            " probabilidade estatística de os lançamentos ficarem abaixo desse"
+            " patamar neste mês."
+        )
+
+        max_val_serie = (
+            float(valores_serie.max()) if not valores_serie.empty else 1000.0
+        )
+        min_val_serie = (
+            float(valores_serie.min()) if not valores_serie.empty else 0.0
+        )
+        default_x = float(media) if not valores_serie.empty else 100.0
+
+        col_nb1, col_nb2 = st.columns([1, 2])
+        with col_nb1:
+          x_usuario = st.number_input(
+              "Defina o Valor Limite (x)",
+              min_value=0.0,
+              max_value=max(max_val_serie * 2, 10000.0),
+              value=default_x,
+              step=10.0,
+              format="%.2f",
+          )
+
+          # Cálculo estilo Excel NORM.DIST(x, média, desvio_padrão, TRUE)
+          if desvio_padrao > 0:
+            prob_acumulada = norm.cdf(x_usuario, loc=media, scale=desvio_padrao) * 100
+          else:
+            prob_acumulada = 100.0 if x_usuario >= media else 0.0
+
+          st.metric(
+              label=f"Probabilidade P(X < R$ {x_usuario:,.2f})",
+              value=f"{prob_acumulada:.2f}%",
+              delta="Chance Acumulada",
+          )
+
+        with col_nb2:
+          if desvio_padrao > 0:
+            # Gerar curva de sino (Normal PDF)
+            x_vals = np.linspace(
+                min(min_val_serie, media - 3 * desvio_padrao),
+                max(max_val_serie, media + 3 * desvio_padrao),
+                300,
+            )
+            y_vals = norm.pdf(x_vals, loc=media, scale=desvio_padrao)
+
+            fig_bell = go.Figure()
+            # Traçado da Curva Normal
+            fig_bell.add_trace(
+                go.Scatter(
+                    x=x_vals,
+                    y=y_vals,
+                    mode="lines",
+                    name="Distribuição Normal",
+                    line=dict(color="#636EFA", width=3),
+                )
+            )
+
+            # Sombra da área menor que x [P(X < x)]
+            x_shade = x_vals[x_vals <= x_usuario]
+            y_shade = y_vals[x_vals <= x_usuario]
+            if len(x_shade) > 0:
+              fig_bell.add_trace(
+                  go.Scatter(
+                      x=np.concatenate([[x_shade[0]], x_shade, [x_shade[-1]]]),
+                      y=np.concatenate([[0], y_shade, [0]]),
+                      fill="toself",
+                      fillcolor="rgba(0, 204, 150, 0.4)",
+                      line=dict(color="rgba(255,255,255,0)"),
+                      name=f"Área P(X < x) = {prob_acumulada:.1f}%",
+                  )
+              )
+
+            # Linha vertical indicando o x escolhido
+            fig_bell.add_vline(
+                x=x_usuario,
+                line_dash="dash",
+                line_color="#EF553B",
+                annotation_text=f"x = R$ {x_usuario:,.2f}",
+                annotation_position="top right",
+            )
+
+            fig_bell.update_layout(
+                plot_bgcolor="rgba(0,0,0,0)",
+                paper_bgcolor="rgba(0,0,0,0)",
+                xaxis_title="Valores dos Lançamentos (R$)",
+                yaxis_title="Densidade de Probabilidade",
+                legend=dict(
+                    orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+                ),
+                margin=dict(l=10, r=10, t=10, b=10),
+            )
+            st.plotly_chart(fig_bell, use_container_width=True)
+          else:
+            st.warning(
+                "Desvio padrão igual a zero. Impossível traçar a curva de sino"
+                " com valores idênticos."
+            )
+        # =========================================================================================
 
         # ==================== BLOCO DE ANÁLISE INTELIGENTE (IA) ====================
         st.markdown("---")
@@ -1592,4 +1693,4 @@ elif aba == "Backup & Segurança":
               "Nenhum arquivo 'meu_banco.json' encontrado. Salve primeiro!"
           )
         except Exception as e:
-          st.error(f"Erro ao processar o arquivo: {e}")
+          st.error(f"Erro ao carregar: {e}")
