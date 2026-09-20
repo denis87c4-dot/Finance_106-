@@ -473,16 +473,12 @@ if aba == "Dashboard":
     st.info("Nenhum lançamento registrado ainda.")
 
 
-# ==================== STATISTICS (ESTATÍSTICAS AVANÇADAS & IA) ====================
+# ==================== STATISTICS / ESTATÍSTICAS E PROJEÇÕES ====================
 elif aba == "Statistics":
-  st.title("📈 Statistics & Advanced Analytics")
-  st.write(
-      "Análise estatística profunda dos seus dados financeiros, com parâmetros"
-      " avançados e interpretação analítica automatizada."
-  )
+  st.title("📊 Estatísticas e Projeções Financeiras")
 
   if st.session_state.lancamentos.empty:
-    st.info("Nenhum lançamento registrado para gerar estatísticas.")
+    st.warning("Nenhum dado disponível para análise estatística.")
   else:
     df_stat = st.session_state.lancamentos.copy()
     df_stat["Data"] = pd.to_datetime(df_stat["Data"])
@@ -493,7 +489,7 @@ elif aba == "Statistics":
     st.markdown("---")
     st.markdown("### 🔍 Filtros Poderosos (Statistics)")
     with st.expander("🛠️ Filtrar Dados para Análise Estatística", expanded=True):
-      col_s1, col_s2, col_s3 = st.columns(3)
+      col_s1, col_s2, col_s3, col_s4 = st.columns(4)
 
       with col_s1:
         anos_stat = sorted(
@@ -504,25 +500,33 @@ elif aba == "Statistics":
         ano_stat_sel = st.multiselect("Filtrar Anos", anos_stat, default=anos_stat)
 
       with col_s2:
+        # Seleção da periodicidade temporal para a análise estatística
+        frequencia_stat = st.selectbox(
+            "Agrupamento Temporal",
+            ["Mensal", "Trimestral", "Quadrimestral", "Semestral", "Anual"],
+            index=0,
+        )
+
+      with col_s3:
         contas_stat = st.session_state.contas
         conta_stat_sel = st.multiselect(
             "Filtrar Contas/Cartões", contas_stat, default=contas_stat
         )
 
-      with col_s3:
+      with col_s4:
         cat_stat = st.session_state.categorias
         cat_stat_sel = st.multiselect(
             "Filtrar Categorias", cat_stat, default=cat_stat
         )
 
-      col_s4, col_s5 = st.columns(2)
-      with col_s4:
+      col_s5, col_s6 = st.columns(2)
+      with col_s5:
         tipo_stat_sel = st.multiselect(
             "Tipo de Lançamento",
             ["Receita", "Despesa", "Transferência"],
             default=["Receita", "Despesa", "Transferência"],
         )
-      with col_s5:
+      with col_s6:
         status_stat_sel = st.multiselect(
             "Status", ["Efetivado", "Orçado"], default=["Efetivado", "Orçado"]
         )
@@ -545,169 +549,123 @@ elif aba == "Statistics":
     if df_stat.empty:
       st.warning("Nenhum dado encontrado com os filtros selecionados.")
     else:
-      df_stat["AnoMes"] = df_stat["Data"].dt.to_period("M").astype(str)
-      meses_stat = sorted(df_stat["AnoMes"].unique().tolist(), reverse=True)
+      # Criar a coluna de período com base na escolha do usuário
+      if frequencia_stat == "Mensal":
+        df_stat["Periodo_Analise"] = df_stat["Data"].dt.to_period("M").astype(str)
+      elif frequencia_stat == "Trimestral":
+        df_stat["Periodo_Analise"] = df_stat["Data"].dt.to_period("Q").astype(str)
+      elif frequencia_stat == "Quadrimestral":
+        df_stat["Periodo_Analise"] = (
+            df_stat["Data"].dt.year.astype(str)
+            + "-Q"
+            + ((df_stat["Data"].dt.month - 1) // 4 + 1).astype(str)
+        )
+      elif frequencia_stat == "Semestral":
+        df_stat["Periodo_Analise"] = (
+            df_stat["Data"].dt.year.astype(str)
+            + "-S"
+            + ((df_stat["Data"].dt.month - 1) // 6 + 1).astype(str)
+        )
+      else:
+        df_stat["Periodo_Analise"] = df_stat["Data"].dt.year.astype(str)
+
+      periodos_disponiveis = sorted(df_stat["Periodo_Analise"].unique().tolist(), reverse=True)
 
       st.markdown("---")
-      col_m_sel, _ = st.columns([2, 2])
-      with col_m_sel:
-        mes_escolhido_stat = st.selectbox(
-            "📅 Selecione o Mês Específico para Análise Detalhada",
-            meses_stat,
+      col_p_sel, _ = st.columns([2, 2])
+      with col_p_sel:
+        periodo_escolhido_stat = st.selectbox(
+            f"📅 Selecione o {frequencia_stat} Específico para Análise Detalhada",
+            periodos_disponiveis,
         )
 
-      df_mes_stat = df_stat[df_stat["AnoMes"] == mes_escolhido_stat]
+      df_periodo_stat = df_stat[df_stat["Periodo_Analise"] == periodo_escolhido_stat]
 
+      # ==================== CURVA DE SINO DOS TOTAIS POR PERÍODO ====================
       st.markdown("---")
-      st.subheader(
-          f"📊 Parâmetros Estatísticos - Período: {mes_escolhido_stat}"
+      st.subheader(f"🔔 Curva de Sino dos Totais ({frequencia_stat}) & Probabilidade P(X < x)")
+      st.write(
+          f"Análise estatística baseada no **histórico de gastos totais por {frequencia_stat.lower()}**. "
+          f"Descubra a probabilidade de o total do {frequencia_stat.lower()} ficar abaixo de um patamar."
       )
 
-      if df_mes_stat.empty:
-        st.info(f"Sem movimentações no mês {mes_escolhido_stat}.")
+      df_historico_periodos = (
+          df_stat[df_stat["Tipo"] == "Despesa"]
+          .groupby("Periodo_Analise")["Valor"]
+          .sum()
+          .reset_index()
+      )
+
+      if len(df_historico_periodos) < 2:
+        st.warning(
+            f"⚠️ Você precisa ter dados de despesas em pelo menos 2 {frequencia_stat.lower()}s "
+            "diferentes para calcular a distribuição normal dos totais."
+        )
       else:
-        valores_serie = df_mes_stat["Valor"]
+        valores_totais_periodo = df_historico_periodos["Valor"]
 
-        media = valores_serie.mean()
-        mediana = valores_serie.median()
-        desvio_padrao = (
-            valores_serie.std() if len(valores_serie) > 1 else 0.0
-        )
-        kurtose = (
-            valores_serie.kurtosis() if len(valores_serie) > 3 else 0.0
-        )
-        skewness = valores_serie.skew() if len(valores_serie) > 2 else 0.0
+        media_periodo = valores_totais_periodo.mean()
+        desvio_padrao_periodo = valores_totais_periodo.std()
 
-        df_stat["Periodo_Period"] = pd.to_datetime(df_stat["AnoMes"])
-        df_historico_mensal = (
-            df_stat.groupby("AnoMes")["Valor"].sum().reset_index()
-        )
-        df_historico_mensal = df_historico_mensal.sort_values("AnoMes")
-        df_historico_mensal["MM3"] = (
-            df_historico_mensal["Valor"].rolling(window=3, min_periods=1).mean()
-        )
-
-        match_mm = df_historico_mensal[
-            df_historico_mensal["AnoMes"] == mes_escolhido_stat
-        ]
-        media_movel_3m = (
-            match_mm["MM3"].values[0]
-            if not match_mm.empty
-            else valores_serie.mean()
-        )
-
-        df_pivot_corr = (
-            df_stat.pivot_table(
-                index="AnoMes",
-                columns="Tipo",
-                values="Valor",
-                aggfunc="sum",
-            )
-            .fillna(0)
-            .reset_index()
-        )
-        if (
-            "Receita" in df_pivot_corr.columns
-            and "Despesa" in df_pivot_corr.columns
-        ):
-          correlacao = df_pivot_corr["Receita"].corr(
-              df_pivot_corr["Despesa"]
-          )
-          if pd.isna(correlacao):
-            correlacao = 0.0
-        else:
-          correlacao = 0.0
-
-        df_tabela_stat = pd.DataFrame({
-            "Parâmetro Estatístico": [
-                "Média (Mean)",
-                "Mediana (Median)",
-                "Média Móvel (3 Meses)",
-                "Desvio Padrão (Std Dev)",
-                "Curtose (Kurtosis)",
-                "Assimetria (Skewness)",
-                "Correlação (Receita vs Despesa)",
-            ],
-            "Valor Calculado": [
-                f"R$ {media:,.2f}",
-                f"R$ {mediana:,.2f}",
-                f"R$ {media_movel_3m:,.2f}",
-                f"R$ {desvio_padrao:,.2f}",
-                f"{kurtose:.2f}",
-                f"{skewness:.2f}",
-                f"{correlacao:.2f}",
-            ],
-        })
-
-        st.dataframe(
-            df_tabela_stat, use_container_width=True, hide_index=True
-        )
-
-        # ==================== NOVA FERRAMENTA: DISTRIBUIÇÃO NORMAL (NORM.DIST & PROBABILIDADE < X) ====================
-        st.markdown("---")
-        st.subheader(
-            "🔔 Curva de Sino & Probabilidade P(X < x) [Estilo NORM.DIST]"
-        )
-        st.write(
-            "Brinque com o valor limite **x** abaixo para descobrir qual é a"
-            " probabilidade estatística de os lançamentos ficarem abaixo desse"
-            " patamar neste mês."
-        )
-
-        max_val_serie = (
-            float(valores_serie.max()) if not valores_serie.empty else 1000.0
-        )
-        min_val_serie = (
-            float(valores_serie.min()) if not valores_serie.empty else 0.0
-        )
-        default_x = float(media) if not valores_serie.empty else 100.0
+        max_val_p = float(valores_totais_periodo.max())
+        min_val_p = float(valores_totais_periodo.min())
+        default_x_p = float(media_periodo)
 
         col_nb1, col_nb2 = st.columns([1, 2])
         with col_nb1:
           x_usuario = st.number_input(
-              "Defina o Valor Limite (x)",
+              f"Defina o Valor Total Limite (x) para o {frequencia_stat}",
               min_value=0.0,
-              max_value=max(max_val_serie * 2, 10000.0),
-              value=default_x,
-              step=10.0,
+              max_value=max(max_val_p * 2, 50000.0),
+              value=default_x_p,
+              step=100.0,
               format="%.2f",
           )
 
-          # Cálculo estilo Excel NORM.DIST(x, média, desvio_padrão, TRUE)
-          if desvio_padrao > 0:
-            prob_acumulada = norm.cdf(x_usuario, loc=media, scale=desvio_padrao) * 100
+          if desvio_padrao_periodo > 0:
+            prob_acumulada = (
+                norm.cdf(
+                    x_usuario,
+                    loc=media_periodo,
+                    scale=desvio_padrao_periodo,
+                )
+                * 100
+            )
           else:
-            prob_acumulada = 100.0 if x_usuario >= media else 0.0
+            prob_acumulada = 100.0 if x_usuario >= media_periodo else 0.0
 
           st.metric(
-              label=f"Probabilidade P(X < R$ {x_usuario:,.2f})",
+              label=f"Probabilidade do Total < R$ {x_usuario:,.2f}",
               value=f"{prob_acumulada:.2f}%",
-              delta="Chance Acumulada",
+              delta=f"Chance Acumulada {frequencia_stat}",
+          )
+          st.info(
+              f"💡 **Média Histórica ({frequencia_stat}):** R$ {media_periodo:,.2f} | "
+              f"**Desvio Padrão:** R$ {desvio_padrao_periodo:,.2f}"
           )
 
         with col_nb2:
-          if desvio_padrao > 0:
-            # Gerar curva de sino (Normal PDF)
+          if desvio_padrao_periodo > 0:
             x_vals = np.linspace(
-                min(min_val_serie, media - 3 * desvio_padrao),
-                max(max_val_serie, media + 3 * desvio_padrao),
+                max(0, min_val_p - 2 * desvio_padrao_periodo),
+                max_val_p + 2 * desvio_padrao_periodo,
                 300,
             )
-            y_vals = norm.pdf(x_vals, loc=media, scale=desvio_padrao)
+            y_vals = norm.pdf(
+                x_vals, loc=media_periodo, scale=desvio_padrao_periodo
+            )
 
             fig_bell = go.Figure()
-            # Traçado da Curva Normal
             fig_bell.add_trace(
                 go.Scatter(
                     x=x_vals,
                     y=y_vals,
                     mode="lines",
-                    name="Distribuição Normal",
+                    name=f"Curva Normal de Despesas ({frequencia_stat})",
                     line=dict(color="#636EFA", width=3),
                 )
             )
 
-            # Sombra da área menor que x [P(X < x)]
             x_shade = x_vals[x_vals <= x_usuario]
             y_shade = y_vals[x_vals <= x_usuario]
             if len(x_shade) > 0:
@@ -722,76 +680,89 @@ elif aba == "Statistics":
                   )
               )
 
-            # Linha vertical indicando o x escolhido
             fig_bell.add_vline(
                 x=x_usuario,
                 line_dash="dash",
                 line_color="#EF553B",
-                annotation_text=f"x = R$ {x_usuario:,.2f}",
+                annotation_text=f"Limite x = R$ {x_usuario:,.2f}",
                 annotation_position="top right",
             )
 
             fig_bell.update_layout(
                 plot_bgcolor="rgba(0,0,0,0)",
                 paper_bgcolor="rgba(0,0,0,0)",
-                xaxis_title="Valores dos Lançamentos (R$)",
+                xaxis_title=f"Valor Total de Despesas no {frequencia_stat} (R$)",
                 yaxis_title="Densidade de Probabilidade",
                 legend=dict(
-                    orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1
+                    orientation="h",
+                    yanchor="bottom",
+                    y=1.02,
+                    xanchor="right",
+                    x=1,
                 ),
                 margin=dict(l=10, r=10, t=10, b=10),
             )
             st.plotly_chart(fig_bell, use_container_width=True)
           else:
-            st.warning(
-                "Desvio padrão igual a zero. Impossível traçar a curva de sino"
-                " com valores idênticos."
-            )
-        # =========================================================================================
+            st.warning("Desvio padrão igual a zero para o período selecionado.")
 
-        # ==================== BLOCO DE ANÁLISE INTELIGENTE (IA) ====================
+        # ==================== PROJEÇÃO DE TENDÊNCIA FUTURA (FORECAST) ====================
         st.markdown("---")
-        st.subheader("🤖 Análise Inteligente de IA & Padrões")
-
-        qtd_lanc = len(df_mes_stat)
-        total_mov = valores_serie.sum()
-
-        interpretacao_kurtose = (
-            "alta concentração de valores em torno da média (distribuição leptocúrtica)"
-            if kurtose > 1
-            else (
-                "dispersão equilibrada de valores (distribuição mesocúrtica/platicúrtica)"
-                if kurtose >= -1
-                else "ampla dispersão sem padrão concentrado"
-            )
+        st.subheader(f"📈 Projeção de Tendência Futura (Forecast {frequencia_stat})")
+        st.write(
+            "Regressão linear aplicada ao histórico de despesas para estimar o comportamento e a linha de tendência dos próximos períodos."
         )
 
-        interpretacao_skew = (
-            "viés positivo (cauda longa à direita, indicando alguns lançamentos de valores expressivamente altos)"
-            if skewness > 0.5
-            else (
-                "viés negativo (cauda à esquerda, indicando predominância de valores menores com poucos picos baixos)"
-                if skewness < -0.5
-                else "distribuição simétrica dos lançamentos"
-            )
-        )
+        if len(df_historico_periodos) >= 3:
+          df_historico_periodos = df_historico_periodos.sort_values("Periodo_Analise").reset_index(drop=True)
+          
+          x_indices = np.arange(len(df_historico_periodos))
+          y_valores = df_historico_periodos["Valor"].values
 
-        status_tendencia = (
-            "crescimento ou resiliência financeira"
-            if media >= (media_movel_3m * 0.9)
-            else "alerta de queda ou contratação de despesas acima da média trimestral"
-        )
+          m, b = np.polyfit(x_indices, y_valores, 1)
 
-        st.markdown(
-            f"""> 🧠 **Relatório Analítico Automatizado para {mes_escolhido_stat}:**
-> 
-> * **Volume de Transações:** No período avaliado, foram registradas **{qtd_lanc} movimentações**, totalizando um montante de **R$ {total_mov:,.2f}**.
-> * **Comportamento e Curtose (Kurt = `{kurtose:.2f}`):** O perfil dos lançamentos apresenta **{interpretacao_kurtose}**. Isso significa que o risco de oscilações bruscas no caixa por itens fora da curva é {('baixo' if kurtose <= 1 else 'moderado/alto')}.
-> * **Assimetria (Skew = `{skewness:.2f}`):** Os dados demonstram **{interpretacao_skew}**. 
-> * **Tendência de Médias:** A média móvel trimestral aponta para **R$ {media_movel_3m:,.2f}**, refletindo um cenário de **{status_tendencia}**.
-> * **Correlação Global:** O índice de correlação entre entradas e saídas no histórico é de **`{correlacao:.2f}`**, indicando o grau de acompanhamento financeiro entre o que entra e o que sai.
-"""
-        )
+          proximo_indice = len(df_historico_periodos)
+          valor_projetado = (m * proximo_indice) + b
+
+          df_historico_periodos["Tendencia"] = (m * x_indices) + b
+
+          fig_forecast = go.Figure()
+          fig_forecast.add_trace(
+              go.Scatter(
+                  x=df_historico_periodos["Periodo_Analise"],
+                  y=df_historico_periodos["Valor"],
+                  mode="lines+markers",
+                  name="Despesas Reais",
+                  line=dict(color="#00CC96", width=2),
+              )
+          )
+          fig_forecast.add_trace(
+              go.Scatter(
+                  x=df_historico_periodos["Periodo_Analise"],
+                  y=df_historico_periodos["Tendencia"],
+                  mode="lines",
+                  name="Linha de Tendência",
+                  line=dict(color="#FFA15A", width=2, dash="dash"),
+              )
+          )
+
+          fig_forecast.update_layout(
+              plot_bgcolor="rgba(0,0,0,0)",
+              paper_bgcolor="rgba(0,0,0,0)",
+              xaxis_title=f"Períodos ({frequencia_stat})",
+              yaxis_title="Total de Despesas (R$)",
+              legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+              margin=dict(l=10, r=10, t=10, b=10),
+          )
+          st.plotly_chart(fig_forecast, use_container_width=True)
+
+          tendencia_direcao = "📈 viés de alta" if m > 0 else "📉 viés de queda"
+          st.success(
+              f"🔮 **Projeção para o próximo {frequencia_stat.lower()}:** R$ {max(0, valor_projetado):,.2f} "
+              f"(A linha de tendência atual aponta para um {tendencia_direcao} de R$ {abs(m):,.2f} por período)."
+          )
+        else:
+          st.info("⚠️ São necessários pelo menos 3 períodos históricos preenchidos para calcular a projeção de tendência com precisão.")
 
 
 # ==================== LANÇAMENTOS (GERENCIAMENTO INTELIGENTE) ====================
