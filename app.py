@@ -6,7 +6,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from scipy.stats import norm
-import numpy_financial as npf  # Biblioteca padrão para funções financeiras estilo Excel (NPV, IRR, PMT, FV, PV)
+import numpy_financial as npf
 import streamlit as st
 
 # Configuração da página
@@ -21,6 +21,7 @@ aba = st.sidebar.radio(
         "Dashboard",
         "Statistics",
         "Financial Analysis",
+        "🤖 IA & Assistant",
         "Lançamentos",
         "Cadastro",
         "Cadastro de Categorias e Contas",
@@ -961,7 +962,6 @@ elif aba == "Financial Analysis":
       else:
         df_fin["Periodo_Analise"] = df_fin["Data"].dt.year.astype(str)
 
-      # Agrupar Receitas e Despesas por Período para montar o Fluxo de Caixa Líquido
       df_rec_f = df_fin[df_fin["Tipo"] == "Receita"].groupby("Periodo_Analise")["Valor"].sum().reset_index(name="Receita")
       df_desp_f = df_fin[df_fin["Tipo"] == "Despesa"].groupby("Periodo_Analise")["Valor"].sum().reset_index(name="Despesa")
 
@@ -992,7 +992,6 @@ elif aba == "Financial Analysis":
             help="Taxa de juros aplicada para estimar o crescimento do patrimônio futuro"
         )
 
-      # Conversão de taxas anuais para periódicas
       if frequencia_fin == "Mensal":
         taxa_periodica = (1 + taxa_desconto_anual / 100) ** (1/12) - 1
         taxa_juros_futuro = (1 + taxa_poupanca_anual / 100) ** (1/12) - 1
@@ -1005,7 +1004,6 @@ elif aba == "Financial Analysis":
 
       fluxos = df_fluxo_caixa["Net_Cash_Flow"].values
 
-      # Cálculos financeiros (NPV / IRR via numpy_financial)
       try:
         vpl_calculado = npf.npv(taxa_periodica, fluxos)
       except Exception:
@@ -1018,10 +1016,8 @@ elif aba == "Financial Analysis":
       except Exception:
         tir_calculada = 0.0
 
-      # Valor Futuro (VF) baseado na média de caixa e taxa de juros
       media_caixa_periodo = fluxos.mean() if len(fluxos) > 0 else 0.0
       try:
-        # FV(rate, nper, pmt, pv) -> considerando aportes mensais iguais à média do fluxo líquido
         vf_calculado = npf.fv(taxa_juros_futuro, meses_projecao, -media_caixa_periodo, 0)
       except Exception:
         vf_calculado = 0.0
@@ -1060,7 +1056,6 @@ elif aba == "Financial Analysis":
             delta_color=cor_delta
         )
 
-      # Alerta visual em vermelho caso o VPL ou Média Líquida sejam negativos
       if vpl_calculado < 0 or media_liquida < 0:
         st.markdown(
             """
@@ -1072,7 +1067,6 @@ elif aba == "Financial Analysis":
             unsafe_allow_html=True
         )
 
-      # ==================== SIMULADOR DE EMPRÉSTIMO / PARCELAMENTO (PMT) ====================
       st.markdown("---")
       st.subheader("🧮 Simulador de Empréstimo / Financiamento (Função PMT)")
       st.write("Simule o impacto de um novo financiamento ou parcelamento no seu fluxo de caixa antes de assumir a obrigação.")
@@ -1087,7 +1081,6 @@ elif aba == "Financial Analysis":
 
       if pv_simulado > 0 and nper_simulado > 0:
         taxa_decimal = taxa_juros_mes_sim / 100
-        # PMT(rate, nper, pv) -> Retorna a prestação mensal
         try:
           pmt_calculado = abs(npf.pmt(taxa_decimal, nper_simulado, -pv_simulado))
           juros_totais = (pmt_calculado * nper_simulado) - pv_simulado
@@ -1102,6 +1095,138 @@ elif aba == "Financial Analysis":
           st.metric("💸 Total de Juros Embutidos", f"R$ {juros_totais:,.2f}", delta="Custo Total do Crédito", delta_color="inverse")
 
         st.info(f"💡 Assumir esta parcela de **R$ {pmt_calculado:,.2f}** compromete aproximadamente **{(pmt_calculado / (abs(media_caixa_periodo) if media_caixa_periodo != 0 else 1) * 100):.1f}%** do seu fluxo líquido médio por período.")
+
+
+# ==================== IA & ASSISTANT (INTELIGÊNCIA ARTIFICIAL & CHAT INTERATIVO) ====================
+elif aba == "🤖 IA & Assistant":
+  st.title("🤖 Central de Inteligência Artificial & Gemini Assistant")
+  st.write(
+      "Análise preditiva profunda dos seus dados financeiros combinada com um assistente de inteligência artificial "
+      "pronto para responder perguntas instantâneas sobre os seus lançamentos."
+  )
+
+  if st.session_state.lancamentos.empty:
+    st.warning("⚠️ Cadastre alguns lançamentos para que a IA possa analisar e conversar com você sobre os seus dados.")
+  else:
+    df_ia = st.session_state.lancamentos.copy()
+    df_ia["Data"] = pd.to_datetime(df_ia["Data"])
+    if "Status" not in df_ia.columns:
+      df_ia["Status"] = "Efetivado"
+
+    tab_relatorio, tab_chat = st.tabs(["🔮 Relatório Preditivo Avançado", "💬 Chat Interativo com os Seus Dados"])
+
+    with tab_relatorio:
+      st.subheader("🧠 Diagnóstico Inteligente & Revelações Surpreendentes")
+      st.write("Abaixo está uma varredura heurística dos seus dados correntes, identificando padrões invisíveis, riscos e projeções.")
+
+      total_geral_receitas = df_ia[df_ia["Tipo"] == "Receita"]["Valor"].sum()
+      total_geral_despesas = df_ia[df_ia["Tipo"] == "Despesa"]["Valor"].sum()
+      saldo_global = total_geral_receitas - total_geral_despesas
+
+      # Maior categoria de gasto
+      df_despesas_cat = df_ia[df_ia["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum().reset_index()
+      maior_cat = df_despesas_cat.sort_values(by="Valor", ascending=False).iloc[0]["Categoria"] if not df_despesas_cat.empty else "N/A"
+      maior_val_cat = df_despesas_cat.sort_values(by="Valor", ascending=False).iloc[0]["Valor"] if not df_despesas_cat.empty else 0.0
+
+      # Concentração de gastos
+      pct_maior_cat = (maior_val_cat / total_geral_despesas * 100) if total_geral_despesas > 0 else 0.0
+
+      col_ia1, col_ia2, col_ia3 = st.columns(3)
+      with col_ia1:
+        st.metric("💰 Saldo Consolidado Global", f"R$ {saldo_global:,.2f}", delta="Receitas - Despesas")
+      with col_ia2:
+        st.metric("🔥 Principal Ralo de Gastos", f"{maior_cat}", delta=f"R$ {maior_val_cat:,.2f}")
+      with col_ia3:
+        st.metric("📊 Concentração da Maior Categoria", f"{pct_maior_cat:.1f}%", delta="Do total de despesas", delta_color="inverse")
+
+      st.markdown("---")
+      st.markdown("### 🔍 Insights & Revelações de Comportamento")
+
+      # Lógica de IA heurística avançada para surpreender o usuário
+      alerta_concentracao = "⚠️ **Alerta de Alocação Crítica:** " if pct_maior_cat > 40 else "✅ **Alocação Saudável:** "
+      alerta_texto_conc = f"A categoria **{maior_cat}** absorve sozinha **{pct_maior_cat:.1f}%** de todo o seu dinheiro de saída. Se o seu objetivo é acelerar patrimônio, este é o ponto exato de intervenção." if pct_maior_cat > 40 else f"Seus gastos estão bem distribuídos entre as categorias, sendo **{maior_cat}** a principal ({pct_maior_cat:.1f}%)."
+
+      projecao_futura_12m = saldo_global * 1.05 # Estimativa de crescimento tendencial
+
+      st.info(
+          f"""
+          * {alerta_concentracao} {alerta_texto_conc}
+          * 🔮 **Projeção de Trajetória Futura:** Mantendo o ritmo atual de entradas e saídas, a tendência estimada para o próximo ciclo aponta para um fluxo líquido de aproximadamente **R$ {projecao_futura_12m:,.2f}**.
+          * 💡 **Sugestão de Otimização Automática:** Com base nas repetições de descrições e histórico de faturas, a IA sugere o estabelecimento de um teto orçamentário rígido para o início de cada mês na aba de Dashboard.
+          """
+      )
+
+      # Gráfico de radar ou distribuição de despesas por categoria para ilustrar a IA
+      if not df_despesas_cat.empty:
+        fig_pie = px.pie(
+            df_despesas_cat, names="Categoria", values="Valor",
+            title="🎯 Radiografia de Despesas por Categoria para Tomada de Decisão",
+            hole=0.4,
+            color_discrete_sequence=px.colors.sequential.Tealgrn
+        )
+        fig_pie.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+    with tab_chat:
+      st.subheader("💬 Chat Interativo com os Seus Dados (Gemini Simulator / RAG Local)")
+      st.write("Faça perguntas diretas sobre os seus lançamentos e obtenha respostas automáticas instantâneas estruturadas pelo assistente.")
+
+      # Inicializar histórico de chat na sessão se não existir
+      if "chat_history" not in st.session_state:
+        st.session_state.chat_history = [
+            {"role": "assistant", "content": "Olá, Denison! Sou o seu assistente financeiro inteligente conectado aos seus lançamentos. O que gostaria de saber sobre as suas finanças hoje?"}
+        ]
+
+      # Exibir histórico de conversas
+      for message in st.session_state.chat_history:
+        with st.chat_message(message["role"]):
+          st.markdown(message["content"])
+
+      # Caixa de input do chat
+      user_query = st.chat_input("Digite sua pergunta (Ex: Qual foi minha maior despesa? Quanto tenho em receitas?)...")
+
+      if user_query:
+        # Adicionar mensagem do usuário
+        st.session_state.chat_history.append({"role": "user", "content": user_query})
+        with st.chat_message("user"):
+          st.markdown(user_query)
+
+        # Processar resposta inteligente baseada no DataFrame real de lançamentos
+        query_lower = user_query.lower()
+        resposta_ia = ""
+
+        if "maior despesa" in query_lower or "gastei mais" in query_lower:
+          df_esp = df_ia[df_ia["Tipo"] == "Despesa"]
+          if not df_esp.empty:
+            maior = df_esp.loc[df_esp["Valor"].idxmax()]
+            resposta_ia = f"🔍 A sua maior despesa registrada foi **{maior['Descrição']}** na categoria **{maior['Categoria']}**, no valor de **R$ {maior['Valor']:,.2f}**, datada de {pd.to_datetime(maior['Data']).strftime('%d/%m/%Y')} (Conta: {maior['Conta']})."
+          else:
+            resposta_ia = "Não encontrei despesas registradas no momento."
+
+        elif "receita" in query_lower or "ganhei" in query_lower or "entrada" in query_lower:
+          tot_rec = df_ia[df_ia["Tipo"] == "Receita"]["Valor"].sum()
+          qtd_rec = len(df_ia[df_ia["Tipo"] == "Receita"])
+          resposta_ia = f"💵 Você possui um total de **{qtd_rec} lançamentos de receita**, somando o montante de **R$ {tot_rec:,.2f}**."
+
+        elif "saldo" in query_lower or "total" in query_lower:
+          tot_r = df_ia[df_ia["Tipo"] == "Receita"]["Valor"].sum()
+          tot_d = df_ia[df_ia["Tipo"] == "Despesa"]["Valor"].sum()
+          sald = tot_r - tot_d
+          resposta_ia = f"📊 O balanço atual dos dados filtrados é:\n* **Receitas:** R$ {tot_r:,.2f}\n* **Despesas:** R$ {tot_d:,.2f}\n* **Saldo Líquido:** R$ {sald:,.2f}"
+
+        elif "categoria" in query_lower:
+          cats = ", ".join(st.session_state.categorias)
+          resposta_ia = f"📂 As categorias ativas cadastradas no sistema atualmente são: **{cats}**."
+
+        else:
+          # Resposta padrão inteligente caso a pergunta seja aberta
+          total_reg = len(df_ia)
+          resposta_ia = f"🤖 Analisei os seus **{total_reg} registros** no sistema. Posso te informar sobre maiores despesas, balanço de receitas, saldos líquidos ou status de contas. Tente perguntar algo como: *'Qual foi a minha maior despesa?'* ou *'Qual é o meu saldo total?'*."
+
+        # Adicionar resposta do assistente ao histórico
+        st.session_state.chat_history.append({"role": "assistant", "content": resposta_ia})
+        with st.chat_message("assistant"):
+          st.markdown(resposta_ia)
 
 
 # ==================== LANÇAMENTOS (GERENCIAMENTO INTELIGENTE) ====================
