@@ -6,6 +6,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from scipy.stats import norm
+import numpy_financial as npf  # Biblioteca padrão para funções financeiras estilo Excel (NPV, IRR, PMT, FV, PV)
 import streamlit as st
 
 # Configuração da página
@@ -19,6 +20,7 @@ aba = st.sidebar.radio(
     [
         "Dashboard",
         "Statistics",
+        "Financial Analysis",
         "Lançamentos",
         "Cadastro",
         "Cadastro de Categorias e Contas",
@@ -500,7 +502,6 @@ elif aba == "Statistics":
         ano_stat_sel = st.multiselect("Filtrar Anos", anos_stat, default=anos_stat)
 
       with col_s2:
-        # Seleção da periodicidade temporal para a análise estatística
         frequencia_stat = st.selectbox(
             "Agrupamento Temporal",
             ["Mensal", "Trimestral", "Quadrimestral", "Semestral", "Anual"],
@@ -549,7 +550,6 @@ elif aba == "Statistics":
     if df_stat.empty:
       st.warning("Nenhum dado encontrado com os filtros selecionados.")
     else:
-      # Criar a coluna de período com base na escolha do usuário
       if frequencia_stat == "Mensal":
         df_stat["Periodo_Analise"] = df_stat["Data"].dt.to_period("M").astype(str)
       elif frequencia_stat == "Trimestral":
@@ -596,7 +596,6 @@ elif aba == "Statistics":
         kurtose = valores_serie.kurtosis() if len(valores_serie) > 3 else 0.0
         skewness = valores_serie.skew() if len(valores_serie) > 2 else 0.0
 
-        # Cálculo de Média Móvel (3 períodos)
         df_historico_todos = (
             df_stat.groupby("Periodo_Analise")["Valor"].sum().reset_index()
             .sort_values("Periodo_Analise")
@@ -606,7 +605,6 @@ elif aba == "Statistics":
         match_mm = df_historico_todos[df_historico_todos["Periodo_Analise"] == periodo_escolhido_stat]
         media_movel_3m = match_mm["MM3"].values[0] if not match_mm.empty else valores_serie.mean()
 
-        # Correlação Receita vs Despesa
         df_pivot_corr = (
             df_stat.pivot_table(
                 index="Periodo_Analise",
@@ -685,7 +683,7 @@ elif aba == "Statistics":
 > 
 > * **Volume de Transações:** No período avaliado, foram registradas **{qtd_lanc} movimentações**, totalizando um montante de **R$ {total_mov:,.2f}**.
 > * **Comportamento e Curtose (Kurt = `{kurtose:.2f}`):** O perfil dos lançamentos apresenta **{interpretacao_kurtose}**. Isso significa que o risco de oscilações bruscas no caixa por itens fora da curva é {('baixo' if kurtose <= 1 else 'moderado/alto')}.
-> * **Assimetria (Skew = `{skewness:.2f}`):** Os dados demonstram **{interpretacao_skew}**. 
+> * **Assimetria (Skew = `{skewness:.2f}`):** O demonstrativo aponta **{interpretacao_skew}**. 
 > * **Tendência de Médias:** A média móvel aponta para **R$ {media_movel_3m:,.2f}**, refletindo um cenário de **{status_tendencia}**.
 > * **Correlação Global:** O índice de correlação entre entradas e saídas no histórico é de **`{correlacao:.2f}`**, indicando o grau de acompanhamento financeiro entre o que entra e o que sai.
 """
@@ -873,6 +871,237 @@ elif aba == "Statistics":
           )
         else:
           st.info("⚠️ São necessários pelo menos 3 períodos históricos preenchidos para calcular a projeção de tendência com precisão.")
+
+
+# ==================== FINANCIAL ANALYSIS / ANÁLISE FINANCEIRA CORPORATIVA ====================
+elif aba == "Financial Analysis":
+  st.title("💼 Financial Analysis & Funções Financeiras (Excel Core)")
+  st.write(
+      "Ferramentas avançadas de engenharia financeira baseadas em fórmulas do Excel (`VPL`, `TIR`, `PMT`, `VF`, `VP`) "
+      "aplicadas diretamente ao seu fluxo de caixa e cenários de simulação."
+  )
+
+  if st.session_state.lancamentos.empty:
+    st.warning("⚠️ Nenhum lançamento disponível para gerar a análise financeira avançada.")
+  else:
+    df_fin = st.session_state.lancamentos.copy()
+    df_fin["Data"] = pd.to_datetime(df_fin["Data"])
+    if "Status" not in df_fin.columns:
+      df_fin["Status"] = "Efetivado"
+
+    # ==================== FILTROS PODEROSOS (FINANCIAL ANALYSIS) ====================
+    st.markdown("---")
+    st.markdown("### 🔍 Filtros Poderosos (Financial Analysis)")
+    with st.expander("🛠️ Filtrar Dados para Análise Financeira", expanded=True):
+      col_fa1, col_fa2, col_fa3, col_fa4 = st.columns(4)
+
+      with col_fa1:
+        anos_fin = sorted(
+            df_fin["Data"].dt.year.dropna().unique().tolist(), reverse=True
+        )
+        if not anos_fin:
+          anos_fin = [pd.Timestamp.now().year]
+        ano_fin_sel = st.multiselect("Filtrar Anos", anos_fin, default=anos_fin, key="fin_anos")
+
+      with col_fa2:
+        frequencia_fin = st.selectbox(
+            "Agrupamento Temporal",
+            ["Mensal", "Trimestral", "Anual"],
+            index=0,
+            key="fin_freq"
+        )
+
+      with col_fa3:
+        contas_fin = st.session_state.contas
+        conta_fin_sel = st.multiselect(
+            "Filtrar Contas/Cartões", contas_fin, default=contas_fin, key="fin_contas"
+        )
+
+      with col_fa4:
+        cat_fin = st.session_state.categorias
+        cat_fin_sel = st.multiselect(
+            "Filtrar Categorias", cat_fin, default=cat_fin, key="fin_cats"
+        )
+
+      col_fa5, col_fa6 = st.columns(2)
+      with col_fa5:
+        tipo_fin_sel = st.multiselect(
+            "Tipo de Lançamento",
+            ["Receita", "Despesa", "Transferência"],
+            default=["Receita", "Despesa", "Transferência"],
+            key="fin_tipos"
+        )
+      with col_fa6:
+        status_fin_sel = st.multiselect(
+            "Status", ["Efetivado", "Orçado"], default=["Efetivado", "Orçado"], key="fin_status"
+        )
+
+    # Aplicar filtros
+    if ano_fin_sel:
+      df_fin = df_fin[df_fin["Data"].dt.year.isin(ano_fin_sel)]
+    if conta_fin_sel:
+      df_fin = df_fin[
+          df_fin["Conta"].isin(conta_fin_sel)
+          | df_fin["Conta Destino"].isin(conta_fin_sel)
+      ]
+    if cat_fin_sel:
+      df_fin = df_fin[df_fin["Categoria"].isin(cat_fin_sel)]
+    if tipo_fin_sel:
+      df_fin = df_fin[df_fin["Tipo"].isin(tipo_fin_sel)]
+    if status_fin_sel:
+      df_fin = df_fin[df_fin["Status"].isin(status_fin_sel)]
+
+    if df_fin.empty:
+      st.warning("⚠️ Nenhum dado encontrado com os filtros selecionados para a Análise Financeira.")
+    else:
+      if frequencia_fin == "Mensal":
+        df_fin["Periodo_Analise"] = df_fin["Data"].dt.to_period("M").astype(str)
+      elif frequencia_fin == "Trimestral":
+        df_fin["Periodo_Analise"] = df_fin["Data"].dt.to_period("Q").astype(str)
+      else:
+        df_fin["Periodo_Analise"] = df_fin["Data"].dt.year.astype(str)
+
+      # Agrupar Receitas e Despesas por Período para montar o Fluxo de Caixa Líquido
+      df_rec_f = df_fin[df_fin["Tipo"] == "Receita"].groupby("Periodo_Analise")["Valor"].sum().reset_index(name="Receita")
+      df_desp_f = df_fin[df_fin["Tipo"] == "Despesa"].groupby("Periodo_Analise")["Valor"].sum().reset_index(name="Despesa")
+
+      df_fluxo_caixa = pd.merge(df_rec_f, df_desp_f, on="Periodo_Analise", how="outer").fillna(0)
+      df_fluxo_caixa = df_fluxo_caixa.sort_values("Periodo_Analise").reset_index(drop=True)
+      df_fluxo_caixa["Net_Cash_Flow"] = df_fluxo_caixa["Receita"] - df_fluxo_caixa["Despesa"]
+
+      st.markdown("---")
+      st.subheader("⚙️ Parâmetros para Modelagem Financeira (Estilo Excel)")
+      
+      col_m_p1, col_m_p2, col_m_p3 = st.columns(3)
+      with col_m_p1:
+        taxa_desconto_anual = st.number_input(
+            "Taxa de Desconto / Custo de Oportunidade (% a.a.)",
+            min_value=0.0, max_value=100.0, value=10.0, step=0.5,
+            help="Usada no cálculo do VPL (Valor Presente Líquido / NPV)"
+        )
+      with col_m_p2:
+        meses_projecao = st.number_input(
+            "Horizonte de Projeção de Patrimônio (Meses)",
+            min_value=1, max_value=120, value=12, step=1,
+            help="Usado no cálculo do Valor Futuro (VF / FV) do saldo acumulado"
+        )
+      with col_m_p3:
+        taxa_poupanca_anual = st.number_input(
+            "Taxa de Rendimento Esperada (% a.a.)",
+            min_value=0.0, max_value=50.0, value=8.0, step=0.5,
+            help="Taxa de juros aplicada para estimar o crescimento do patrimônio futuro"
+        )
+
+      # Conversão de taxas anuais para periódicas
+      if frequencia_fin == "Mensal":
+        taxa_periodica = (1 + taxa_desconto_anual / 100) ** (1/12) - 1
+        taxa_juros_futuro = (1 + taxa_poupanca_anual / 100) ** (1/12) - 1
+      elif frequencia_fin == "Trimestral":
+        taxa_periodica = (1 + taxa_desconto_anual / 100) ** (1/4) - 1
+        taxa_juros_futuro = (1 + taxa_poupanca_anual / 100) ** (1/4) - 1
+      else:
+        taxa_periodica = taxa_desconto_anual / 100
+        taxa_juros_futuro = taxa_poupanca_anual / 100
+
+      fluxos = df_fluxo_caixa["Net_Cash_Flow"].values
+
+      # Cálculos financeiros (NPV / IRR via numpy_financial)
+      try:
+        vpl_calculado = npf.npv(taxa_periodica, fluxos)
+      except Exception:
+        vpl_calculado = 0.0
+
+      try:
+        tir_calculada = npf.irr(fluxos) * 100
+        if pd.isna(tir_calculada):
+          tir_calculada = 0.0
+      except Exception:
+        tir_calculada = 0.0
+
+      # Valor Futuro (VF) baseado na média de caixa e taxa de juros
+      media_caixa_periodo = fluxos.mean() if len(fluxos) > 0 else 0.0
+      try:
+        # FV(rate, nper, pmt, pv) -> considerando aportes mensais iguais à média do fluxo líquido
+        vf_calculado = npf.fv(taxa_juros_futuro, meses_projecao, -media_caixa_periodo, 0)
+      except Exception:
+        vf_calculado = 0.0
+
+      st.markdown("---")
+      st.subheader("📊 KPIs Corporativos de Retorno & Viabilidade")
+
+      kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+      
+      with kpi1:
+        st.metric(
+            label="💵 VPL / NPV (Valor Presente Líquido)",
+            value=f"R$ {vpl_calculado:,.2f}",
+            delta="Viabilidade do Caixa" if vpl_calculado >= 0 else "Alerta Deficitário",
+            delta_color="normal" if vpl_calculado >= 0 else "inverse"
+        )
+      with kpi2:
+        st.metric(
+            label="📈 TIR / IRR (Taxa Interna de Retorno)",
+            value=f"{tir_calculada:.2f}% a.p.",
+            delta="Retorno Efetivo do Período"
+        )
+      with kpi3:
+        st.metric(
+            label="🔮 Valor Futuro (VF / FV Projetado)",
+            value=f"R$ {vf_calculado:,.2f}",
+            delta=f"Em {meses_projecao} períodos"
+        )
+      with kpi4:
+        media_liquida = fluxos.mean()
+        cor_delta = "normal" if media_liquida >= 0 else "inverse"
+        st.metric(
+            label="⚖️ Média Líquida por Período",
+            value=f"R$ {media_liquida:,.2f}",
+            delta="Fluxo Médio",
+            delta_color=cor_delta
+        )
+
+      # Alerta visual em vermelho caso o VPL ou Média Líquida sejam negativos
+      if vpl_calculado < 0 or media_liquida < 0:
+        st.markdown(
+            """
+            <div style="padding: 15px; border-radius: 8px; background-color: rgba(239, 85, 59, 0.15); border: 1px solid #EF553B; margin-top: 20px; margin-bottom: 20px;">
+                <h4 style="color: #EF553B; margin: 0;">🚨 ATENÇÃO: Alerta de Desequilíbrio Financeiro</h4>
+                <p style="margin: 5px 0 0 0; color: #333;">O seu Valor Presente Líquido (VPL) ou o fluxo líquido médio estão apontando valores negativos para os filtros selecionados. Considere revisar as despesas ou renegociar faturas na aba de Cartões de Crédito.</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+      # ==================== SIMULADOR DE EMPRÉSTIMO / PARCELAMENTO (PMT) ====================
+      st.markdown("---")
+      st.subheader("🧮 Simulador de Empréstimo / Financiamento (Função PMT)")
+      st.write("Simule o impacto de um novo financiamento ou parcelamento no seu fluxo de caixa antes de assumir a obrigação.")
+
+      col_s_pmt1, col_s_pmt2, col_s_pmt3 = st.columns(3)
+      with col_s_pmt1:
+        pv_simulado = st.number_input("Valor do Empréstimo / Dívida (VP - R$)", min_value=0.0, value=10000.0, step=500.0, format="%.2f")
+      with col_s_pmt2:
+        taxa_juros_mes_sim = st.number_input("Taxa de Juros Mensal (% a.m.)", min_value=0.0, max_value=20.0, value=1.5, step=0.1)
+      with col_s_pmt3:
+        nper_simulado = st.number_input("Número de Parcelas (Meses)", min_value=1, max_value=360, value=12, step=1)
+
+      if pv_simulado > 0 and nper_simulado > 0:
+        taxa_decimal = taxa_juros_mes_sim / 100
+        # PMT(rate, nper, pv) -> Retorna a prestação mensal
+        try:
+          pmt_calculado = abs(npf.pmt(taxa_decimal, nper_simulado, -pv_simulado))
+          juros_totais = (pmt_calculado * nper_simulado) - pv_simulado
+        except Exception:
+          pmt_calculado = 0.0
+          juros_totais = 0.0
+
+        col_res1, col_res2 = st.columns(2)
+        with col_res1:
+          st.metric("💳 Valor da Parcela Mensal (PMT)", f"R$ {pmt_calculado:,.2f}")
+        with col_res2:
+          st.metric("💸 Total de Juros Embutidos", f"R$ {juros_totais:,.2f}", delta="Custo Total do Crédito", delta_color="inverse")
+
+        st.info(f"💡 Assumir esta parcela de **R$ {pmt_calculado:,.2f}** compromete aproximadamente **{(pmt_calculado / (abs(media_caixa_periodo) if media_caixa_periodo != 0 else 1) * 100):.1f}%** do seu fluxo líquido médio por período.")
 
 
 # ==================== LANÇAMENTOS (GERENCIAMENTO INTELIGENTE) ====================
