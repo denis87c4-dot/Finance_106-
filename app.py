@@ -88,6 +88,19 @@ if "cartoes" not in st.session_state:
       },
   ]
 
+if "investimentos" not in st.session_state:
+  st.session_state.investimentos = pd.DataFrame(
+      columns=[
+          "Nome",
+          "Tipo",
+          "Conta Vinculada",
+          "Valor Aplicado",
+          "Rentabilidade Esperada (% a.a.)",
+          "Visibilidade",
+          "Data da Aplicação",
+      ]
+  )
+
 
 # ==================== DASHBOARD ====================
 if aba == "Dashboard":
