@@ -22,6 +22,7 @@ aba = st.sidebar.radio(
         "Statistics",
         "Financial Analysis",
         "🤖 IA & Assistant",
+        "Investments", 
         "Lançamentos",
         "Cadastro",
         "Cadastro de Categorias e Contas",
@@ -1222,6 +1223,404 @@ elif aba == "🤖 IA & Assistant":
 
             st.markdown(resposta_gemini)
             st.session_state.chat_history_gemini.append({"role": "assistant", "content": resposta_gemini})
+
+
+# ==================== INVESTMENTS / GESTÃO DE INVESTIMENTOS ====================
+elif aba == "Investments":
+  st.title("💰 Gestão de Investimentos & Patrimônio")
+  st.write(
+      "Separe o seu capital investido do fluxo de caixa diário, gerencie aportes,"
+      " resgates e utilize filtros avançados para analisar sua carteira."
+  )
+
+  tab_inv_gerenciar, tab_inv_aportes, tab_inv_dashboard = st.tabs([
+      "📝 Meus Ativos & Filtros",
+      "💸 Aportes e Resgates (Movimentações)",
+      "📈 Projeção & Patrimônio Líquido",
+  ])
+
+  with tab_inv_gerenciar:
+    st.subheader("Cadastrar Novo Ativo de Investimento")
+    with st.form("form_cad_investimento"):
+      col_iv1, col_iv2 = st.columns(2)
+      with col_iv1:
+        nome_ativo = st.text_input(
+            "Nome do Ativo / Investimento",
+            placeholder="Ex: Tesouro Selic 2029, Poupança Nubank...",
+        )
+        tipo_ativo = st.selectbox(
+            "Classe do Ativo",
+            [
+                "Renda Fixa",
+                "Tesouro Direto",
+                "Poupança",
+                "Ações / FIIs",
+                "Criptomoedas",
+                "Outros",
+            ],
+        )
+        conta_vinculada = st.selectbox(
+            "Conta de Origem/Custódia", st.session_state.contas
+        )
+      with col_iv2:
+        valor_aplicado = st.number_input(
+            "Valor Inicial Aplicado (R$)",
+            min_value=0.0,
+            step=100.0,
+            format="%.2f",
+        )
+        rentabilidade_aa = st.number_input(
+            "Rentabilidade Estimada (% a.a.)",
+            min_value=0.0,
+            max_value=100.0,
+            value=10.0,
+            step=0.5,
+        )
+        visibilidade_patrimonio = st.selectbox(
+            "Visibilidade no Saldo Geral",
+            [
+                "Visível no Saldo Geral (Compõe Patrimônio)",
+                "Protegido / Oculto (Isolado do Saldo Corrente)",
+            ],
+        )
+
+      btn_salvar_ativo = st.form_submit_button(
+          "💾 Salvar Ativo", use_container_width=True
+      )
+      if btn_salvar_ativo:
+        if not nome_ativo:
+          st.error("O nome do ativo não pode estar vazio.")
+        else:
+          novo_inv = pd.DataFrame(
+              [[
+                  nome_ativo,
+                  tipo_ativo,
+                  conta_vinculada,
+                  valor_aplicado,
+                  rentabilidade_aa,
+                  visibilidade_patrimonio,
+                  pd.Timestamp.now().date(),
+              ]],
+              columns=[
+                  "Nome",
+                  "Tipo",
+                  "Conta Vinculada",
+                  "Valor Aplicado",
+                  "Rentabilidade Esperada (% a.a.)",
+                  "Visibilidade",
+                  "Data da Aplicação",
+              ],
+          )
+          st.session_state.investimentos = pd.concat(
+              [st.session_state.investimentos, novo_inv], ignore_index=True
+          )
+          st.success(f"Investimento '{nome_ativo}' cadastrado com sucesso!")
+          st.rerun()
+
+    st.markdown("---")
+    st.subheader("🔍 Filtros Poderosos da Carteira")
+
+    if not st.session_state.investimentos.empty:
+      # Criando os Filtros Avançados
+      col_f1, col_f2, col_f3 = st.columns(3)
+      with col_f1:
+        tipos_disponiveis = ["Todos"] + list(
+            st.session_state.investimentos["Tipo"].unique()
+        )
+        filtro_tipo = st.selectbox("Filtrar por Classe de Ativo", tipos_disponiveis)
+      with col_f2:
+        contas_disponiveis = ["Todas"] + list(
+            st.session_state.investimentos["Conta Vinculada"].unique()
+        )
+        filtro_conta = st.selectbox("Filtrar por Conta Custódia", contas_disponiveis)
+      with col_f3:
+        busca_termo = st.text_input(
+            "Pesquisar por Nome do Ativo",
+            placeholder="Digite para buscar...",
+        )
+
+      # Aplicando os filtros no DataFrame
+      df_filtrado = st.session_state.investimentos.copy()
+      if filtro_tipo != "Todos":
+        df_filtrado = df_filtrado[df_filtrado["Tipo"] == filtro_tipo]
+      if filtro_conta != "Todas":
+        df_filtrado = df_filtrado[
+            df_filtrado["Conta Vinculada"] == filtro_conta
+        ]
+      if busca_termo:
+        df_filtrado = df_filtrado[
+            df_filtrado["Nome"].str.contains(busca_termo, case=False, na=False)
+        ]
+
+      st.markdown(
+          f"**Exibindo {len(df_filtrado)} de {len(st.session_state.investimentos)} ativos cadastrados**"
+      )
+
+      st.dataframe(
+          df_filtrado.style.format({
+              "Valor Aplicado": "R$ {:,.2f}",
+              "Rentabilidade Esperada (% a.a.)": "{:.2f}% a.a.",
+          }),
+          use_container_width=True,
+          hide_index=True,
+      )
+
+      st.markdown("---")
+      with st.expander("🗑️ Gerenciar Exclusão de Ativos"):
+        idx_para_excluir = st.selectbox(
+            "Selecione o índice do ativo para excluir",
+            df_filtrado.index.tolist()
+            if not df_filtrado.empty
+            else [0],
+        )
+        if (
+            not df_filtrado.empty
+            and st.button("Confirmar Exclusão do Ativo Selecionado")
+        ):
+          st.session_state.investimentos = (
+              st.session_state.investimentos.drop(idx_para_excluir)
+              .reset_index(drop=True)
+          )
+          st.success("Ativo removido com sucesso!")
+          st.rerun()
+    else:
+      st.info("Nenhum investimento cadastrado ainda.")
+
+  with tab_inv_aportes:
+    st.subheader("💸 Movimentações Inteligentes (Aportes e Resgates)")
+    st.write(
+        "Realize aportes tirando dinheiro da Conta Corrente para investir, ou resgates"
+        " enviando o dinheiro de volta para a conta. O sistema gera os lançamentos automaticamente."
+    )
+
+    if st.session_state.investimentos.empty:
+      st.warning(
+          "Cadastre pelo menos um ativo na aba anterior antes de realizar"
+          " movimentações."
+      )
+    else:
+      tipo_mov = st.radio(
+          "Tipo de Movimentação",
+          ["📈 Aporte (Investir mais)", "📉 Resgate (Retirar para gastar)"],
+          horizontal=True,
+      )
+
+      nomes_ativos = st.session_state.investimentos["Nome"].tolist()
+      ativo_escolhido = st.selectbox(
+          "Selecione o Ativo", nomes_ativos, key="ativo_movimento"
+      )
+
+      col_m_iv1, col_m_iv2, col_m_iv3 = st.columns(3)
+      with col_m_iv1:
+        valor_mov = st.number_input(
+            "Valor da Movimentação (R$)",
+            min_value=0.0,
+            step=50.0,
+            format="%.2f",
+            key="val_mov_inv",
+        )
+      with col_m_iv2:
+        conta_transacao = st.selectbox(
+            "Conta Corrente Envolvida",
+            st.session_state.contas,
+            key="conta_trans_inv",
+        )
+      with col_m_iv3:
+        data_mov = st.date_input(
+            "Data da Movimentação", key="data_mov_invest"
+        )
+
+      if st.button("🚀 Executar Movimentação Financeira", type="primary"):
+        if valor_mov <= 0:
+          st.error("O valor da movimentação deve ser maior que zero.")
+        else:
+          idx_ativo = st.session_state.investimentos[
+              st.session_state.investimentos["Nome"] == ativo_escolhido
+          ].index[0]
+
+          if "Aporte" in tipo_mov:
+            st.session_state.investimentos.loc[idx_ativo, "Valor Aplicado"] += (
+                valor_mov
+            )
+            novo_lanc_transf = pd.DataFrame(
+                [[
+                    "Transferência",
+                    conta_transacao,
+                    f"Investimento: {ativo_escolhido}",
+                    "Aplicação em Investimento",
+                    f"Aporte em {ativo_escolhido}",
+                    valor_mov,
+                    data_mov,
+                    "Única",
+                    "Integral",
+                    "Efetivado",
+                ]],
+                columns=[
+                    "Tipo",
+                    "Conta",
+                    "Conta Destino",
+                    "Categoria",
+                    "Descrição",
+                    "Valor",
+                    "Data",
+                    "Parcelas",
+                    "Modo Valor",
+                    "Status",
+                ],
+            )
+            st.success(
+                f"Aporte de R$ {valor_mov:,.2f} realizado em '{ativo_escolhido}'"
+                " com sucesso!"
+            )
+          else:
+            atual = st.session_state.investimentos.loc[
+                idx_ativo, "Valor Aplicado"
+            ]
+            if valor_mov > atual:
+              st.error(
+                  "O valor do resgate não pode ser maior que o saldo aplicado"
+                  " no ativo."
+              )
+              novo_lanc_transf = None
+            else:
+              st.session_state.investimentos.loc[
+                  idx_ativo, "Valor Aplicado"
+              ] -= valor_mov
+              novo_lanc_transf = pd.DataFrame(
+                  [[
+                      "Transferência",
+                      f"Investimento: {ativo_escolhido}",
+                      conta_transacao,
+                      "Resgate de Investimento",
+                      f"Resgate de {ativo_escolhido}",
+                      valor_mov,
+                      data_mov,
+                      "Única",
+                      "Integral",
+                      "Efetivado",
+                  ]],
+                  columns=[
+                      "Tipo",
+                      "Conta",
+                      "Conta Destino",
+                      "Categoria",
+                      "Descrição",
+                      "Valor",
+                      "Data",
+                      "Parcelas",
+                      "Modo Valor",
+                      "Status",
+                  ],
+              )
+              st.success(
+                  f"Resgate de R$ {valor_mov:,.2f} efetuado de"
+                  f" '{ativo_escolhido}' com sucesso!"
+              )
+
+          if "novo_lanc_transf" in locals() and novo_lanc_transf is not None:
+            st.session_state.lancamentos = pd.concat(
+                [st.session_state.lancamentos, novo_lanc_transf],
+                ignore_index=True,
+            )
+            st.rerun()
+
+  with tab_inv_dashboard:
+    st.subheader("📈 Raio-X Patrimonial & Projeção de Rentabilidade")
+
+    if st.session_state.investimentos.empty:
+      st.info("Nenhum dado de investimento disponível para projeção.")
+    else:
+      df_inv = st.session_state.investimentos.copy()
+
+      total_aplicado_geral = df_inv["Valor Aplicado"].sum()
+      df_visivel = df_inv[
+          df_inv["Visibilidade"].str.contains("Visível", na=False)
+      ]
+      total_visivel = df_visivel["Valor Aplicado"].sum()
+      total_protegido = total_aplicado_geral - total_visivel
+
+      col_p1, col_p2, col_p3 = st.columns(3)
+      with col_p1:
+        st.metric(
+            "💰 Patrimônio Total Aplicado", f"R$ {total_aplicado_geral:,.2f}"
+        )
+      with col_p2:
+        st.metric(
+            "🟢 Visível no Saldo Geral",
+            f"R$ {total_visivel:,.2f}",
+            delta="Compõe o Patrimônio Líquido",
+        )
+      with col_p3:
+        st.metric(
+            "🔒 Protegido / Oculto",
+            f"R$ {total_protegido:,.2f}",
+            delta="Isolado da Corrente",
+        )
+
+      st.markdown("---")
+      st.markdown("### 📊 Alocação de Ativos por Classe")
+
+      fig_inv_pie = px.pie(
+          df_inv,
+          names="Nome",
+          values="Valor Aplicado",
+          color="Tipo",
+          title="Distribuição da Carteira de Investimentos",
+          hole=0.4,
+      )
+      fig_inv_pie.update_layout(
+          plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"
+      )
+      st.plotly_chart(fig_inv_pie, use_container_width=True)
+
+      st.markdown("---")
+      st.markdown("### 🔮 Projeção de Crescimento Patrimonial (Juros Compostos)")
+
+      col_pr1, col_pr2 = st.columns(2)
+      with col_pr1:
+        anos_proj = st.slider(
+            "Horizonte de Projeção (Anos)", min_value=1, max_value=30, value=5
+        )
+      with col_pr2:
+        aporte_mensal_proj = st.number_input(
+            "Aporte Mensal Adicional Previsto (R$)",
+            min_value=0.0,
+            value=500.0,
+            step=100.0,
+        )
+
+      taxa_media_aa = (
+          df_inv["Rentabilidade Esperada (% a.a.)"].mean() / 100
+      )
+      taxa_mensal_proj = (1 + taxa_media_aa) ** (1 / 12) - 1
+
+      meses_proj = anos_proj * 12
+      lista_proj = []
+      patrimonio_atual = total_aplicado_geral
+
+      for m in range(meses_proj + 1):
+        lista_proj.append({"Mês": m, "Patrimônio": patrimonio_atual})
+        patrimonio_atual = (
+            patrimonio_atual * (1 + taxa_mensal_proj) + aporte_mensal_proj
+        )
+
+      df_proj = pd.DataFrame(lista_proj)
+
+      fig_proj = px.line(
+          df_proj,
+          x="Mês",
+          y="Patrimônio",
+          title=f"Evolução Patrimonial Projetada para {anos_proj} Anos",
+          labels={
+              "Mês": "Meses",
+              "Patrimônio": "Patrimônio Acumulado (R$)",
+          },
+      )
+      fig_proj.update_traces(line=dict(color="#00CC96", width=3))
+      fig_proj.update_layout(
+          plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"
+      )
+      st.plotly_chart(fig_proj, use_container_width=True)
 
 
 # ==================== LANÇAMENTOS (GERENCIAMENTO INTELIGENTE) ====================
