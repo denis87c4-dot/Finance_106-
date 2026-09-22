@@ -1,6 +1,5 @@
-import io
+Import io
 import json
-import os
 import zipfile
 import numpy as np
 import pandas as pd
@@ -14,63 +13,6 @@ import streamlit as st
 st.set_page_config(
     page_title="Fluxo Financeiro Profissional", page_icon="💰", layout="wide"
 )
-
-# ==================== ARQUIVO DE PERSISTÊNCIA LOCAL ====================
-ARQUIVO_PERSISTENCIA = "dados_financeiros_app.json"
-
-def carregar_dados():
-    """Carrega os dados salvos localmente no arquivo JSON para o session_state."""
-    if os.path.exists(ARQUIVO_PERSISTENCIA):
-        try:
-            with open(ARQUIVO_PERSISTENCIA, "r", encoding="utf-8") as f:
-                dados = json.load(f)
-                
-                # Restaurar Lançamentos
-                if "lancamentos" in dados and dados["lancamentos"]:
-                    st.session_state.lancamentos = pd.DataFrame(dados["lancamentos"])
-                    if "Data" in st.session_state.lancamentos.columns:
-                        st.session_state.lancamentos["Data"] = pd.to_datetime(st.session_state.lancamentos["Data"]).dt.date
-                
-                # Restaurar Investimentos
-                if "investimentos" in dados and dados["investimentos"]:
-                    st.session_state.investimentos = pd.DataFrame(dados["investimentos"])
-                    if "Data da Aplicação" in st.session_state.investimentos.columns:
-                        st.session_state.investimentos["Data da Aplicação"] = pd.to_datetime(st.session_state.investimentos["Data da Aplicação"]).dt.date
-
-                # Restaurar Listas Auxiliares
-                if "categorias" in dados:
-                    st.session_state.categorias = dados["categorias"]
-                if "contas" in dados:
-                    st.session_state.contas = dados["contas"]
-                if "cartoes" in dados:
-                    st.session_state.cartoes = dados["cartoes"]
-        except Exception as e:
-            st.error(f"Erro ao carregar dados persistidos: {e}")
-
-def salvar_dados():
-    """Salva o estado atual das tabelas e listas no arquivo JSON local."""
-    try:
-        # Converter DataFrames para dicionários seguros para JSON
-        df_lanc_exp = st.session_state.lancamentos.copy()
-        if not df_lanc_exp.empty and "Data" in df_lanc_exp.columns:
-            df_lanc_exp["Data"] = pd.to_datetime(df_lanc_exp["Data"]).astype(str)
-
-        df_inv_exp = st.session_state.investimentos.copy()
-        if not df_inv_exp.empty and "Data da Aplicação" in df_inv_exp.columns:
-            df_inv_exp["Data da Aplicação"] = pd.to_datetime(df_inv_exp["Data da Aplicação"]).astype(str)
-
-        dados = {
-            "lancamentos": df_lanc_exp.to_dict(orient="records"),
-            "investimentos": df_inv_exp.to_dict(orient="records"),
-            "categorias": st.session_state.categorias,
-            "contas": st.session_state.contas,
-            "cartoes": st.session_state.cartoes
-        }
-        with open(ARQUIVO_PERSISTENCIA, "w", encoding="utf-8") as f:
-            json.dump(dados, f, ensure_ascii=False, indent=4)
-    except Exception as e:
-        st.error(f"Erro ao salvar dados automaticamente: {e}")
-
 
 # ==================== NAVEGAÇÃO LATERAL ====================
 aba = st.sidebar.radio(
@@ -105,6 +47,13 @@ if "lancamentos" not in st.session_state:
           "Status",
       ]
   )
+
+# Garantir compatibilidade com bases antigas que não tinham a coluna Status
+if (
+    not st.session_state.lancamentos.empty
+    and "Status" not in st.session_state.lancamentos.columns
+):
+  st.session_state.lancamentos["Status"] = "Efetivado"
 
 if "categorias" not in st.session_state:
   st.session_state.categorias = [
@@ -151,18 +100,6 @@ if "investimentos" not in st.session_state:
           "Data da Aplicação",
       ]
   )
-
-# Executa o carregamento inicial dos dados persistidos (se existirem)
-if "dados_carregados" not in st.session_state:
-    carregar_dados()
-    st.session_state.dados_carregados = True
-
-# Garantir compatibilidade com bases antigas que não tinham a coluna Status
-if (
-    not st.session_state.lancamentos.empty
-    and "Status" not in st.session_state.lancamentos.columns
-):
-  st.session_state.lancamentos["Status"] = "Efetivado"
 
 
 # ==================== DASHBOARD ====================
@@ -1289,7 +1226,8 @@ elif aba == "🤖 IA & Assistant":
                 Pergunta do usuário: {user_prompt}
                 """
 
-                model = genai.GenerativeModel('gemini-1.5-flash')
+                # CORREÇÃO DO MODELO ATUALIZADO
+                model = genai.GenerativeModel('gemini-3.6-flash')
                 response = model.generate_content(prompt_sistema)
                 resposta_gemini = response.text
 
@@ -1389,7 +1327,6 @@ elif aba == "Investments":
           st.session_state.investimentos = pd.concat(
               [st.session_state.investimentos, novo_inv], ignore_index=True
           )
-          salvar_dados()  # Persiste automaticamente
           st.success(f"Investimento '{nome_ativo}' cadastrado com sucesso!")
           st.rerun()
 
@@ -1397,6 +1334,7 @@ elif aba == "Investments":
     st.subheader("🔍 Filtros Poderosos da Carteira")
 
     if not st.session_state.investimentos.empty:
+      # Criando os Filtros Avançados
       col_f1, col_f2, col_f3 = st.columns(3)
       with col_f1:
         tipos_disponiveis = ["Todos"] + list(
@@ -1414,6 +1352,7 @@ elif aba == "Investments":
             placeholder="Digite para buscar...",
         )
 
+      # Aplicando os filtros no DataFrame
       df_filtrado = st.session_state.investimentos.copy()
       if filtro_tipo != "Todos":
         df_filtrado = df_filtrado[df_filtrado["Tipo"] == filtro_tipo]
@@ -1455,7 +1394,6 @@ elif aba == "Investments":
               st.session_state.investimentos.drop(idx_para_excluir)
               .reset_index(drop=True)
           )
-          salvar_dados()  # Persiste automaticamente
           st.success("Ativo removido com sucesso!")
           st.rerun()
     else:
@@ -1597,7 +1535,6 @@ elif aba == "Investments":
                 [st.session_state.lancamentos, novo_lanc_transf],
                 ignore_index=True,
             )
-            salvar_dados()  # Persiste automaticamente
             st.rerun()
 
   with tab_inv_dashboard:
@@ -1648,6 +1585,55 @@ elif aba == "Investments":
           plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"
       )
       st.plotly_chart(fig_inv_pie, use_container_width=True)
+
+      st.markdown("---")
+      st.markdown("### 🔮 Projeção de Crescimento Patrimonial (Juros Compostos)")
+
+      col_pr1, col_pr2 = st.columns(2)
+      with col_pr1:
+        anos_proj = st.slider(
+            "Horizonte de Projeção (Anos)", min_value=1, max_value=30, value=5
+        )
+      with col_pr2:
+        aporte_mensal_proj = st.number_input(
+            "Aporte Mensal Adicional Previsto (R$)",
+            min_value=0.0,
+            value=500.0,
+            step=100.0,
+        )
+
+      taxa_media_aa = (
+          df_inv["Rentabilidade Esperada (% a.a.)"].mean() / 100
+      )
+      taxa_mensal_proj = (1 + taxa_media_aa) ** (1 / 12) - 1
+
+      meses_proj = anos_proj * 12
+      lista_proj = []
+      patrimonio_atual = total_aplicado_geral
+
+      for m in range(meses_proj + 1):
+        lista_proj.append({"Mês": m, "Patrimônio": patrimonio_atual})
+        patrimonio_atual = (
+            patrimonio_atual * (1 + taxa_mensal_proj) + aporte_mensal_proj
+        )
+
+      df_proj = pd.DataFrame(lista_proj)
+
+      fig_proj = px.line(
+          df_proj,
+          x="Mês",
+          y="Patrimônio",
+          title=f"Evolução Patrimonial Projetada para {anos_proj} Anos",
+          labels={
+              "Mês": "Meses",
+              "Patrimônio": "Patrimônio Acumulado (R$)",
+          },
+      )
+      fig_proj.update_traces(line=dict(color="#00CC96", width=3))
+      fig_proj.update_layout(
+          plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)"
+      )
+      st.plotly_chart(fig_proj, use_container_width=True)
 
 
 # ==================== LANÇAMENTOS (GERENCIAMENTO INTELIGENTE) ====================
@@ -1883,7 +1869,6 @@ elif aba == "Lançamentos":
               st.session_state.lancamentos.loc[id_para_editar, "Status"] = (
                   novo_status
               )
-              salvar_dados()  # Persiste automaticamente
               st.success(f"Lançamento ID {id_para_editar} atualizado com sucesso!")
               st.rerun()
 
@@ -1903,7 +1888,6 @@ elif aba == "Lançamentos":
           st.session_state.lancamentos = st.session_state.lancamentos.drop(
               id_para_excluir
           ).reset_index(drop=True)
-          salvar_dados()  # Persiste automaticamente
           st.success(
               f"Lançamento ID {id_para_excluir} removido com sucesso!"
           )
@@ -1926,7 +1910,6 @@ elif aba == "Lançamentos":
                 st.session_state.lancamentos.drop(indices_para_remover)
                 .reset_index(drop=True)
             )
-            salvar_dados()  # Persiste automaticamente
             st.success(
                 f"{len(indices_para_remover)} lançamentos foram excluídos com"
                 " sucesso!"
@@ -2117,58 +2100,439 @@ elif aba == "Cadastro":
               "Status",
           ],
       )
-
       st.session_state.lancamentos = pd.concat(
           [st.session_state.lancamentos, df_novos], ignore_index=True
       )
-      
-      salvar_dados()  # Persiste automaticamente em arquivo local
-      st.success("Lançamento(s) salvo(s) e persistido(s) com sucesso!")
-      st.rerun()
+      st.success(
+          f"Lançamento(s) salvo(s) com sucesso! ({parcelas} registro(s)"
+          " gerado(s))"
+      )
 
 
-# ==================== OUTRAS ABAS (CADASTRO DE CONTAS, CARTÕES, BACKUP) ====================
+# ==================== CADASTRO DE CATEGORIAS E CONTAS ====================
 elif aba == "Cadastro de Categorias e Contas":
-  st.title("⚙️ Gerenciamento de Contas e Categorias")
-  
-  col_cc1, col_cc2 = st.columns(2)
-  with col_cc1:
-    st.subheader("Contas Cadastradas")
-    st.write(st.session_state.contas)
-    nova_c = st.text_input("Adicionar nova conta rápida")
-    if st.button("Adicionar Conta"):
-      if nova_c and nova_c not in st.session_state.contas:
-        st.session_state.contas.append(nova_c)
-        salvar_dados()
-        st.success("Conta adicionada!")
-        st.rerun()
+  st.title("📝 Cadastro Geral")
+  tab_cat, tab_acc = st.tabs(["Categorias", "Contas (Accounts)"])
 
-  with col_cc2:
-    st.subheader("Categorias Cadastradas")
-    st.write(st.session_state.categorias)
-    nova_cat = st.text_input("Adicionar nova categoria rápida")
+  with tab_cat:
+    st.subheader("Gerenciar Categorias")
+    nova_cat = st.text_input("Nova Categoria")
     if st.button("Adicionar Categoria"):
       if nova_cat and nova_cat not in st.session_state.categorias:
         st.session_state.categorias.append(nova_cat)
-        salvar_dados()
-        st.success("Categoria adicionada!")
-        st.rerun()
+        st.success(f"Categoria '{nova_cat}' adicionada com sucesso!")
+      else:
+        st.warning("Insira uma categoria válida ou que não exista.")
+    st.write("Categorias atuais:", st.session_state.categorias)
 
+  with tab_acc:
+    st.subheader("Gerenciar Contas")
+    nova_conta = st.text_input("Nova Conta (Account)")
+    if st.button("Adicionar Conta"):
+      if nova_conta and nova_conta not in st.session_state.contas:
+        st.session_state.contas.append(nova_conta)
+        st.success(f"Conta '{nova_conta}' adicionada com sucesso!")
+      else:
+        st.warning("Insira uma conta válida ou que não exista.")
+    st.write("Contas atuais:", st.session_state.contas)
+
+
+# ==================== CARTÕES DE CRÉDITO ====================
 elif aba == "Cartões de Crédito":
   st.title("💳 Gestão de Cartões de Crédito")
-  st.write("Cartões cadastrados atualmente:")
-  for c in st.session_state.cartoes:
-    st.markdown(f"- **{c['Nome']}** | Limite: R$ {c['Limite']:,.2f} | Fechamento: dia {c['Fechamento']} | Vencimento: dia {c['Vencimento']}")
+  st.write(
+      "Cadastre seus cartões, acompanhe limites e visualize faturas em"
+      " aberto baseadas nos lançamentos vinculados."
+  )
 
-elif aba == "Backup & Segurança":
-  st.title("🔒 Backup & Segurança dos Dados")
-  st.write("Baixe uma cópia de segurança de todos os seus dados em formato JSON ou restaure através de arquivos salvos.")
-  
-  if os.path.exists(ARQUIVO_PERSISTENCIA):
-    with open(ARQUIVO_PERSISTENCIA, "rb") as fp:
-      st.download_button(
-          label="📥 Baixar Backup Completo (JSON)",
-          data=fp,
-          file_name="backup_financeiro.json",
-          mime="application/json"
+  tab_gerenciar, tab_faturas = st.tabs(
+      ["📝 Cadastrar / Meus Cartões", "📊 Faturas & Limites"]
+  )
+
+  with tab_gerenciar:
+    st.subheader("Cadastrar Novo Cartão")
+    with st.form("form_cad_cartao"):
+      col_c1, col_c2 = st.columns(2)
+      with col_c1:
+        nome_cartao = st.text_input(
+            "Nome do Cartão", placeholder="Ex: Visa Platinum, Mastercard..."
+        )
+        limite_cartao = st.number_input(
+            "Limite Total (R$)", min_value=0.0, step=100.0, format="%.2f"
+        )
+      with col_c2:
+        dia_fechamento = st.number_input(
+            "Dia de Fechamento da Fatura",
+            min_value=1,
+            max_value=31,
+            value=1,
+            step=1,
+        )
+        dia_vencimento = st.number_input(
+            "Dia de Vencimento da Fatura",
+            min_value=1,
+            max_value=31,
+            value=10,
+            step=1,
+        )
+
+      submitted_cartao = st.form_submit_button(
+          "💾 Salvar Cartão", use_container_width=True
       )
+      if submitted_cartao:
+        if not nome_cartao:
+          st.error("O nome do cartão não pode estar vazio.")
+        elif limite_cartao <= 0:
+          st.error("O limite deve ser maior que zero.")
+        else:
+          nomes_existentes = [c["Nome"] for c in st.session_state.cartoes]
+          if nome_cartao in nomes_existentes:
+            st.warning("Já existe um cartão cadastrado com esse nome.")
+          else:
+            st.session_state.cartoes.append({
+                "Nome": nome_cartao,
+                "Limite": limite_cartao,
+                "Fechamento": int(dia_fechamento),
+                "Vencimento": int(dia_vencimento),
+            })
+            if nome_cartao not in st.session_state.contas:
+              st.session_state.contas.append(nome_cartao)
+            st.success(f"Cartão '{nome_cartao}' cadastrado com sucesso!")
+            st.rerun()
+
+    st.markdown("---")
+    st.subheader("Cartões Cadastrados")
+    if st.session_state.cartoes:
+      df_cartoes = pd.DataFrame(st.session_state.cartoes)
+      st.dataframe(df_cartoes, use_container_width=True)
+    else:
+      st.info("Nenhum cartão cadastrado.")
+
+  with tab_faturas:
+    st.subheader("Visão Geral de Faturas e Limites")
+
+    if not st.session_state.cartoes:
+      st.warning(
+          "Cadastre pelo menos um cartão na aba anterior para ver as faturas."
+      )
+    else:
+      nomes_cartoes = [c["Nome"] for c in st.session_state.cartoes]
+      cartao_selecionado = st.selectbox(
+          "Selecione o Cartão", nomes_cartoes, key="select_cartao_detalhe"
+      )
+
+      dados_cartao = next(
+          c for c in st.session_state.cartoes if c["Nome"] == cartao_selecionado
+      )
+      limite_total = dados_cartao["Limite"]
+
+      df_lanc = st.session_state.lancamentos
+      if not df_lanc.empty:
+        df_cartao_lanc = df_lanc[
+            (df_lanc["Conta"] == cartao_selecionado)
+            | (df_lanc["Conta Destino"] == cartao_selecionado)
+        ]
+      else:
+        df_cartao_lanc = pd.DataFrame()
+
+      if not df_cartao_lanc.empty:
+        total_gasto = df_cartao_lanc[
+            df_cartao_lanc["Tipo"] == "Despesa"
+        ]["Valor"].sum()
+        total_pago = df_cartao_lanc[
+            df_cartao_lanc["Tipo"] == "Receita"
+        ]["Valor"].sum()
+        comprometido = total_gasto - total_pago
+      else:
+        comprometido = 0.0
+
+      limite_disponivel = limite_total - comprometido
+
+      col_m1, col_m2, col_m3 = st.columns(3)
+      with col_m1:
+        st.metric("Limite Total", f"R$ {limite_total:,.2f}")
+      with col_m2:
+        st.metric(
+            "Fatura / Comprometido Atual",
+            f"R$ {comprometido:,.2f}",
+            delta=f"Vencimento dia {dados_cartao['Vencimento']}",
+            delta_color="inverse",
+        )
+      with col_m3:
+        st.metric(
+            "Limite Disponível",
+            f"R$ {limite_disponivel:,.2f}",
+            delta=(
+                "Saudável" if limite_disponivel >= 0 else "Limite Ultrapassado!"
+            ),
+        )
+
+      st.markdown("---")
+      st.markdown(
+          f"💳 **Registrar Pagamento de Fatura para: {cartao_selecionado}**"
+      )
+      with st.form("form_pagamento_fatura"):
+        col_p1, col_p2, col_p3 = st.columns(3)
+        with col_p1:
+          conta_origem_pag = st.selectbox(
+              "Conta de Origem do Dinheiro",
+              [c for c in st.session_state.contas if c != cartao_selecionado],
+          )
+        with col_p2:
+          valor_pagamento = st.number_input(
+              "Valor do Pagamento (R$)", min_value=0.0, step=10.0, format="%.2f"
+          )
+        with col_p3:
+          data_pagamento = st.date_input("Data do Pagamento")
+
+        btn_lancar_pagamento = st.form_submit_button(
+            "✅ Registrar Pagamento de Fatura", use_container_width=True
+        )
+
+        if btn_lancar_pagamento:
+          if valor_pagamento <= 0:
+            st.error("O valor do pagamento deve ser maior que zero.")
+          else:
+            novo_pag_df = pd.DataFrame(
+                [[
+                    "Transferência",
+                    conta_origem_pag,
+                    cartao_selecionado,
+                    "Pagamento de Fatura",
+                    f"Pagamento Fatura {cartao_selecionado}",
+                    valor_pagamento,
+                    data_pagamento,
+                    "Única",
+                    "Integral",
+                    "Efetivado",
+                ]],
+                columns=[
+                    "Tipo",
+                    "Conta",
+                    "Conta Destino",
+                    "Categoria",
+                    "Descrição",
+                    "Valor",
+                    "Data",
+                    "Parcelas",
+                    "Modo Valor",
+                    "Status",
+                ],
+            )
+            st.session_state.lancamentos = pd.concat(
+                [st.session_state.lancamentos, novo_pag_df], ignore_index=True
+            )
+            st.success(
+                f"Pagamento de R$ {valor_pagamento:,.2f} registrado com sucesso!"
+            )
+            st.rerun()
+
+      st.markdown("---")
+      st.markdown(
+          f"### Lançamentos Vinculados ao Cartão: **{cartao_selecionado}**"
+      )
+      if not df_cartao_lanc.empty:
+        st.dataframe(df_cartao_lanc, use_container_width=True)
+      else:
+        st.info(
+            f"Nenhum lançamento encontrado para o cartão"
+            f" '{cartao_selecionado}'."
+        )
+
+
+# ==================== BACKUP & SEGURANÇA ====================
+elif aba == "Backup & Segurança":
+  st.title("🛡️ Central de Backup e Segurança")
+  st.write(
+      "Gerencie cópias de segurança dos seus dados financeiros com total"
+      " flexibilidade."
+  )
+
+  tab_exp, tab_zip, tab_imp, tab_loc = st.tabs(
+      [
+          "📤 Exportar Dados",
+          "📦 Backup ZIP",
+          "📥 Importar Multi-formato",
+          "💾 Persistência Local",
+      ]
+  )
+
+  with tab_exp:
+    st.subheader("Exportação Rápida")
+    dados_dict = {
+        "lancamentos": st.session_state.lancamentos.to_dict(orient="records"),
+        "categorias": st.session_state.categorias,
+        "contas": st.session_state.contas,
+        "cartoes": st.session_state.cartoes,
+    }
+    json_str = json.dumps(dados_dict, ensure_ascii=False, indent=4, default=str)
+
+    st.download_button(
+        label="📥 Baixar Backup Completo (.json)",
+        data=json_str,
+        file_name="backup_financeiro.json",
+        mime="application/json",
+        use_container_width=True,
+    )
+
+    st.markdown("---")
+    csv_data = st.session_state.lancamentos.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="📊 Baixar Apenas Lançamentos (.csv)",
+        data=csv_data,
+        file_name="lancamentos.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+
+  with tab_zip:
+    st.subheader("Pacote de Segurança Compactado (.zip)")
+    if st.button("📦 Gerar Arquivo ZIP de Backup", use_container_width=True):
+      zip_buffer = io.BytesIO()
+      with zipfile.ZipFile(
+          zip_buffer, "w", zipfile.ZIP_DEFLATED
+      ) as zip_file:
+        zip_file.writestr(
+            "lancamentos.csv",
+            st.session_state.lancamentos.to_csv(index=False).encode("utf-8"),
+        )
+        meta_dict = {
+            "categorias": st.session_state.categorias,
+            "contas": st.session_state.contas,
+            "cartoes": st.session_state.cartoes,
+        }
+        zip_file.writestr(
+            "metadados.json",
+            json.dumps(meta_dict, ensure_ascii=False, indent=4),
+        )
+
+      zip_buffer.seek(0)
+      st.download_button(
+          label="📦 Baixar Pacote ZIP Seguro",
+          data=zip_buffer,
+          file_name="backup_completo_seguro.zip",
+          mime="application/zip",
+          use_container_width=True,
+      )
+      st.success("Pacote ZIP gerado com sucesso!")
+
+  with tab_imp:
+    st.subheader("Importar Dados (ZIP, JSON, CSV ou Excel)")
+    st.write(
+        "Faça upload de arquivos de backup anteriores (incluindo o arquivo"
+        " .zip) para restaurar o seu sistema."
+    )
+
+    arquivo_subido = st.file_uploader(
+        "Escolha o arquivo de backup", type=["zip", "json", "csv", "xlsx", "xls"]
+    )
+
+    if arquivo_subido is not None:
+      extensao = arquivo_subido.name.split(".")[-1].lower()
+
+      try:
+        if extensao == "zip":
+          with zipfile.ZipFile(arquivo_subido, "r") as zip_ref:
+            arquivos_no_zip = zip_ref.namelist()
+
+            if "lancamentos.csv" in arquivos_no_zip:
+              with zip_ref.open("lancamentos.csv") as f:
+                st.session_state.lancamentos = pd.read_csv(f)
+                if "Status" not in st.session_state.lancamentos.columns:
+                  st.session_state.lancamentos["Status"] = "Efetivado"
+
+            if "metadados.json" in arquivos_no_zip:
+              with zip_ref.open("metadados.json") as f:
+                meta_data = json.load(f)
+                if "categorias" in meta_data:
+                  st.session_state.categorias = meta_data["categorias"]
+                if "contas" in meta_data:
+                  st.session_state.contas = meta_data["contas"]
+                if "cartoes" in meta_data:
+                  st.session_state.cartoes = meta_data["cartoes"]
+
+          st.success("Backup ZIP importado e restaurado com sucesso!")
+
+        elif extensao == "json":
+          conteudo = json.load(arquivo_subido)
+          if "lancamentos" in conteudo:
+            st.session_state.lancamentos = pd.DataFrame(
+                conteudo["lancamentos"]
+            )
+            if "Status" not in st.session_state.lancamentos.columns:
+              st.session_state.lancamentos["Status"] = "Efetivado"
+          if "categorias" in conteudo:
+            st.session_state.categorias = conteudo["categorias"]
+          if "contas" in conteudo:
+            st.session_state.contas = conteudo["contas"]
+          if "cartoes" in conteudo:
+            st.session_state.cartoes = conteudo["cartoes"]
+          st.success("Backup JSON importado e restaurado com sucesso!")
+
+        elif extensao == "csv":
+          df_importado = pd.read_csv(arquivo_subido)
+          if "Status" not in df_importado.columns:
+            df_importado["Status"] = "Efetivado"
+          st.session_state.lancamentos = pd.concat(
+              [st.session_state.lancamentos, df_importado], ignore_index=True
+          )
+          st.success("Lançamentos do CSV adicionados com sucesso!")
+
+        elif extensao in ["xlsx", "xls"]:
+          df_importado = pd.read_excel(arquivo_subido)
+          if "Status" not in df_importado.columns:
+            df_importado["Status"] = "Efetivado"
+          st.session_state.lancamentos = pd.concat(
+              [st.session_state.lancamentos, df_importado], ignore_index=True
+          )
+          st.success("Lançamentos do Excel adicionados com sucesso!")
+
+        st.rerun()
+      except Exception as e:
+        st.error(f"Erro ao processar o arquivo: {e}")
+
+  with tab_loc:
+    st.subheader("Backup Automático no Servidor / Máquina Local")
+    st.write(
+        "Salva o estado atual diretamente em um arquivo fixo (`meu_banco.json`)"
+        " na pasta do sistema."
+    )
+
+    col_l1, col_l2 = st.columns(2)
+
+    with col_l1:
+      if st.button("💾 Salvar no Disco Local", use_container_width=True):
+        dados_locais = {
+            "lancamentos": st.session_state.lancamentos.to_dict(
+                orient="records"
+            ),
+            "categorias": st.session_state.categorias,
+            "contas": st.session_state.contas,
+            "cartoes": st.session_state.cartoes,
+        }
+        with open("meu_banco.json", "w", encoding="utf-8") as f:
+          json.dump(dados_locais, f, ensure_ascii=False, indent=4, default=str)
+        st.success("Dados salvos com sucesso no arquivo 'meu_banco.json'!")
+
+    with col_l2:
+      if st.button("📂 Carregar do Disco Local", use_container_width=True):
+        try:
+          with open("meu_banco.json", "r", encoding="utf-8") as f:
+            dados_locais = json.load(f)
+            st.session_state.lancamentos = pd.DataFrame(
+                dados_locais["lancamentos"]
+            )
+            if "Status" not in st.session_state.lancamentos.columns:
+              st.session_state.lancamentos["Status"] = "Efetivado"
+            st.session_state.categorias = dados_locais["categorias"]
+            st.session_state.contas = dados_locais["contas"]
+            if "cartoes" in dados_locais:
+              st.session_state.cartoes = dados_locais["cartoes"]
+          st.success("Dados carregados com sucesso do disco local!")
+          st.rerun()
+        except FileNotFoundError:
+          st.warning(
+              "Nenhum arquivo 'meu_banco.json' encontrado. Salve primeiro!"
+          )
+        except Exception as e:
+          st.error(f"Erro ao carregar: {e}")
