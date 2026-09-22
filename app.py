@@ -1,4 +1,4 @@
-Import io
+import io
 import json
 import zipfile
 import numpy as np
