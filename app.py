@@ -851,29 +851,488 @@ if aba == "Dashboard":
         if tipo_disc_filtro != "Todos":
           df_tracking = df_tracking[df_tracking["Tipo"] == tipo_disc_filtro]
 
-        if not df_tracking.empty:
-          df_grouped_desc = (
-              df_tracking.groupby(
-                  ["Data", "Categoria", "Descrição", "Tipo", "Conta"]
-              )["Valor"]
-              .sum()
-              .reset_index()
-              .sort_values(by="Valor", ascending=False)
-          )
+# ==================== DASHBOARD ====================
+if aba == "Dashboard":
+    st.title("📊 Dashboard Financeiro")
 
-          st.dataframe(
-              df_grouped_desc.style.format({"Valor": "R$ {:,.2f}"}),
-              use_container_width=True,
-              hide_index=True,
-          )
+    if not st.session_state.lancamentos.empty:
+        df_temp = st.session_state.lancamentos.copy()
+        df_temp["Data"] = pd.to_datetime(df_temp["Data"])
+        if "Status" not in df_temp.columns:
+            df_temp["Status"] = "Efetivado"
+
+        # ==================== BLOCO: CONTROLE DE BUDGET VS EFETIVADO (MÊS) ====================
+        st.markdown("---")
+        st.subheader("🎯 Controle Orçamentário: Budget vs. Efetivado por Categoria")
+
+        df_temp["AnoMes"] = df_temp["Data"].dt.to_period("M").astype(str)
+        meses_disponiveis = sorted(df_temp["AnoMes"].unique().tolist(), reverse=True)
+
+        if not meses_disponiveis:
+            meses_disponiveis = [pd.Timestamp.now().strftime("%Y-%m")]
+
+        col_bm1, col_bm2 = st.columns([2, 2])
+        with col_bm1:
+            mes_atual_str = pd.Timestamp.now().strftime("%Y-%m")
+            default_mes = (
+                [mes_atual_str]
+                if mes_atual_str in meses_disponiveis
+                else [meses_disponiveis[0]]
+            )
+            mes_selecionado = st.selectbox(
+                "📅 Selecione o Mês para Análise do Budget",
+                meses_disponiveis,
+                index=(
+                    meses_disponiveis.index(default_mes[0])
+                    if default_mes[0] in meses_disponiveis
+                    else 0
+                ),
+            )
+
+        with col_bm2:
+            tipo_orcamento = st.selectbox(
+                "Tipo de Lançamento para o Budget", ["Despesa", "Receita"]
+            )
+
+        df_mes = df_temp[
+            (df_temp["AnoMes"] == mes_selecionado)
+            & (df_temp["Tipo"] == tipo_orcamento)
+        ]
+
+        if df_mes.empty:
+            st.info(f"Nenhum lançamento encontrado para o período {mes_selecionado}.")
         else:
-          st.info("Nenhum registro encontrado para os critérios de rastreio.")
+            df_pivot = (
+                df_mes.pivot_table(
+                    index="Categoria",
+                    columns="Status",
+                    values="Valor",
+                    aggfunc="sum",
+                )
+                .reset_index()
+                .fillna(0.0)
+            )
 
-      st.markdown("---")
-      st.subheader("📋 Tabela de Lançamentos Filtrados")
-      st.dataframe(df_temp, use_container_width=True)
-  else:
-    st.info("Nenhum lançamento registrado ainda.")
+            if "Orçado" not in df_pivot.columns:
+                df_pivot["Orçado"] = 0.0
+            if "Efetivado" not in df_pivot.columns:
+                df_pivot["Efetivado"] = 0.0
+
+            df_budget_final = pd.DataFrame()
+            df_budget_final["Categoria"] = df_pivot["Categoria"]
+            df_budget_final["Budget"] = df_pivot["Orçado"]
+            df_budget_final["Efetivado"] = df_pivot["Efetivado"]
+
+            if tipo_orcamento == "Despesa":
+                df_budget_final["Diferença (Saldo)"] = (
+                    df_budget_final["Budget"] - df_budget_final["Efetivado"]
+                )
+            else:
+                df_budget_final["Diferença (Saldo)"] = (
+                    df_budget_final["Efetivado"] - df_budget_final["Budget"]
+                )
+
+            df_budget_final["% Utilizado"] = df_budget_final.apply(
+                lambda row: (row["Efetivado"] / row["Budget"] * 100)
+                if row["Budget"] > 0
+                else 0.0,
+                axis=1,
+            )
+
+            st.dataframe(
+                df_budget_final.style.format(
+                    {
+                        "Budget": "R$ {:,.2f}",
+                        "Efetivado": "R$ {:,.2f}",
+                        "Diferença (Saldo)": "R$ {:,.2f}",
+                        "% Utilizado": "{:.1f}%",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+        # ==================== FIM DO BLOCO DE BUDGET ====================
+
+        # ==================== FILTROS DINÂMICOS (PODEROSOS) ====================
+        st.markdown("---")
+        st.markdown("### 🔍 Filtros Dinâmicos Avançados")
+        with st.expander(
+            "🛠️ Personalizar Visualização do Dashboard com Filtros Poderosos",
+            expanded=True,
+        ):
+            col_f1, col_f2, col_f3, col_f4 = st.columns(4)
+
+            with col_f1:
+                tipo_periodo = st.selectbox(
+                    "Agrupamento Temporal",
+                    ["Mensal", "Trimestral", "Quadrimestral", "Semestral", "Anual"],
+                )
+
+            with col_f2:
+                anos_disponiveis = sorted(
+                    df_temp["Data"].dt.year.dropna().unique().tolist(), reverse=True
+                )
+                if not anos_disponiveis:
+                    anos_disponiveis = [pd.Timestamp.now().year]
+                ano_selecionado = st.multiselect(
+                    "Filtrar Anos",
+                    anos_disponiveis,
+                    default=anos_disponiveis,
+                )
+
+            with col_f3:
+                contas_disponiveis = st.session_state.contas
+                conta_selecionada = st.multiselect(
+                    "Filtrar Contas/Cartões",
+                    contas_disponiveis,
+                    default=contas_disponiveis,
+                )
+
+            with col_f4:
+                categorias_disponiveis = st.session_state.categorias
+                categoria_selecionada = st.multiselect(
+                    "Filtrar Categorias",
+                    categorias_disponiveis,
+                    default=categorias_disponiveis,
+                )
+
+            col_f5, col_f6 = st.columns(2)
+            with col_f5:
+                filtro_tipo_lanc = st.multiselect(
+                    "Tipos de Lançamento",
+                    ["Receita", "Despesa", "Transferência"],
+                    default=["Receita", "Despesa", "Transferência"],
+                )
+
+            with col_f6:
+                status_disponiveis = ["Efetivado", "Orçado"]
+                status_selecionado = st.multiselect(
+                    "Status (Budget / Realizado)",
+                    status_disponiveis,
+                    default=status_disponiveis,
+                )
+
+        # Aplicar filtros no DataFrame
+        if ano_selecionado:
+            df_temp = df_temp[df_temp["Data"].dt.year.isin(ano_selecionado)]
+        if conta_selecionada:
+            df_temp = df_temp[
+                df_temp["Conta"].isin(conta_selecionada)
+                | df_temp["Conta Destino"].isin(conta_selecionada)
+            ]
+        if categoria_selecionada:
+            df_temp = df_temp[df_temp["Categoria"].isin(categoria_selecionada)]
+        if filtro_tipo_lanc:
+            df_temp = df_temp[df_temp["Tipo"].isin(filtro_tipo_lanc)]
+        if status_selecionado:
+            df_temp = df_temp[df_temp["Status"].isin(status_selecionado)]
+
+        if df_temp.empty:
+            st.warning(
+                "Nenhum lançamento encontrado com os filtros selecionados no momento."
+            )
+        else:
+            # ==================== KPIS INTELIGENTES ADICIONAIS ====================
+            st.markdown("---")
+            st.subheader("⚡ Indicadores de Desempenho (KPIs Inteligentes)")
+
+            total_rec_f = df_temp[df_temp["Tipo"] == "Receita"]["Valor"].sum()
+            total_desp_f = df_temp[df_temp["Tipo"] == "Despesa"]["Valor"].sum()
+            saldo_liquido_f = total_rec_f - total_desp_f
+
+            taxa_poupanca = (
+                (saldo_liquido_f / total_rec_f * 100) if total_rec_f > 0 else 0.0
+            )
+
+            dias_unicos = df_temp["Data"].nunique()
+            media_diaria = (
+                (total_desp_f / dias_unicos) if dias_unicos > 0 else 0.0
+            )
+
+            kpi1, kpi2, kpi3, kpi4, kpi5 = st.columns(5)
+            with kpi1:
+                st.metric(
+                    "Total Receitas",
+                    f"R$ {total_rec_f:,.2f}",
+                    delta="Entradas",
+                    delta_color="normal",
+                )
+            with kpi2:
+                st.metric(
+                    "Total Despesas",
+                    f"R$ {total_desp_f:,.2f}",
+                    delta="Saídas",
+                    delta_color="inverse",
+                )
+            with kpi3:
+                st.metric(
+                    "Saldo Líquido",
+                    f"R$ {saldo_liquido_f:,.2f}",
+                    delta=f"{taxa_poupanca:.1f}% Guardado",
+                    delta_color="normal" if saldo_liquido_f >= 0 else "inverse",
+                )
+            with kpi4:
+                st.metric("Taxa de Poupança", f"{taxa_poupanca:.1f}%", delta="Meta > 20%")
+            with kpi5:
+                st.metric(
+                    "Média Diária (Gastos)",
+                    f"R$ {media_diaria:,.2f}",
+                    delta="Por dia ativo",
+                    delta_color="off",
+                )
+
+            # ==================== AGRUPAMENTO TEMPORAL ====================
+            if tipo_periodo == "Mensal":
+                df_temp["Periodo"] = df_temp["Data"].dt.to_period("M").astype(str)
+            elif tipo_periodo == "Trimestral":
+                df_temp["Periodo"] = df_temp["Data"].dt.to_period("Q").astype(str)
+            elif tipo_periodo == "Quadrimestral":
+                df_temp["Periodo"] = (
+                    df_temp["Data"].dt.year.astype(str)
+                    + "-Q"
+                    + ((df_temp["Data"].dt.month - 1) // 4 + 1).astype(str)
+                )
+            elif tipo_periodo == "Semestral":
+                df_temp["Periodo"] = (
+                    df_temp["Data"].dt.year.astype(str)
+                    + "-S"
+                    + ((df_temp["Data"].dt.month - 1) // 6 + 1).astype(str)
+                )
+            else:
+                df_temp["Periodo"] = df_temp["Data"].dt.year.astype(str)
+
+            df_rec_m = (
+                df_temp[df_temp["Tipo"] == "Receita"]
+                .groupby("Periodo")["Valor"]
+                .sum()
+                .reset_index(name="Income")
+            )
+            df_desp_m = (
+                df_temp[df_temp["Tipo"] == "Despesa"]
+                .groupby("Periodo")["Valor"]
+                .sum()
+                .reset_index(name="Expense")
+            )
+
+            df_resumo = pd.merge(
+                df_rec_m, df_desp_m, on="Periodo", how="outer"
+            ).fillna(0)
+            df_resumo = df_resumo.sort_values("Periodo").reset_index(drop=True)
+
+            df_resumo["Cash Flow"] = df_resumo["Income"] - df_resumo["Expense"]
+            df_resumo["Cumulative"] = df_resumo["Cash Flow"].cumsum()
+            df_resumo = df_resumo.rename(columns={"Periodo": "Período"})
+
+            st.markdown("---")
+            st.subheader(f"📅 Resumo Financeiro Consolidado ({tipo_periodo})")
+
+            def color_negative(val):
+                if isinstance(val, (int, float)) and val < 0:
+                    return "color: #ff4b4b; font-weight: bold;"
+                return ""
+
+            df_styled = df_resumo.style.format(
+                {
+                    "Income": "R$ {:,.2f}",
+                    "Expense": "R$ {:,.2f}",
+                    "Cash Flow": "R$ {:,.2f}",
+                    "Cumulative": "R$ {:,.2f}",
+                }
+            ).map(color_negative, subset=["Cash Flow", "Cumulative"])
+
+            st.dataframe(df_styled, use_container_width=True)
+
+            # ==================== GRÁFICOS ANALÍTICOS AVANÇADOS ====================
+            st.markdown("---")
+            st.subheader("📈 Análise Gráfica Dinâmica e Estrutural")
+
+            col_g1, col_g2 = st.columns(2)
+
+            with col_g1:
+                st.markdown("##### 🌊 Cash Flow vs. Cumulative")
+                fig_linhas = go.Figure()
+                fig_linhas.add_trace(
+                    go.Scatter(
+                        x=df_resumo["Período"],
+                        y=df_resumo["Cumulative"],
+                        mode="lines+markers",
+                        name="Cumulative",
+                        line=dict(color="#636EFA", width=2),
+                    )
+                )
+
+                cf_positivo = df_resumo["Cash Flow"].apply(
+                    lambda x: x if x >= 0 else None
+                )
+                cf_negativo = df_resumo["Cash Flow"].apply(
+                    lambda x: x if x < 0 else None
+                )
+
+                fig_linhas.add_trace(
+                    go.Scatter(
+                        x=df_resumo["Período"],
+                        y=cf_positivo,
+                        mode="lines+markers",
+                        name="Cash Flow (Positivo)",
+                        line=dict(color="#00CC96", width=2),
+                        connectgaps=True,
+                    )
+                )
+                fig_linhas.add_trace(
+                    go.Scatter(
+                        x=df_resumo["Período"],
+                        y=cf_negativo,
+                        mode="lines+markers",
+                        name="Cash Flow (Negativo)",
+                        line=dict(color="#EF553B", width=3),
+                        connectgaps=True,
+                    )
+                )
+                fig_linhas.update_layout(
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    xaxis_title="",
+                    yaxis_title="R$ (Reais)",
+                    legend_title="",
+                    margin=dict(l=10, r=10, t=10, b=10),
+                )
+                st.plotly_chart(fig_linhas, use_container_width=True)
+
+            with col_g2:
+                st.markdown("##### 📊 Receitas vs. Despesas por Período")
+                df_melt_barras = df_resumo.melt(
+                    id_vars=["Período"],
+                    value_vars=["Income", "Expense"],
+                    var_name="Tipo",
+                    value_name="Valor",
+                )
+                fig_barras = px.bar(
+                    df_melt_barras,
+                    x="Período",
+                    y="Valor",
+                    color="Tipo",
+                    barmode="group",
+                    color_discrete_map={"Income": "#00CC96", "Expense": "#EF553B"},
+                )
+                fig_barras.update_layout(
+                    plot_bgcolor="rgba(0,0,0,0)",
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    xaxis_title="",
+                    yaxis_title="R$ (Reais)",
+                    legend_title="",
+                    margin=dict(l=10, r=10, t=10, b=10),
+                )
+                st.plotly_chart(fig_barras, use_container_width=True)
+
+            col_g3, col_g4 = st.columns(2)
+            with col_g3:
+                st.markdown("##### 🍕 Participação de Despesas por Categoria")
+                df_cat_pie = (
+                    df_temp[df_temp["Tipo"] == "Despesa"]
+                    .groupby("Categoria")["Valor"]
+                    .sum()
+                    .reset_index()
+                )
+                if not df_cat_pie.empty:
+                    fig_pie = px.pie(
+                        df_cat_pie,
+                        names="Categoria",
+                        values="Valor",
+                        hole=0.4,
+                        color_discrete_sequence=px.colors.qualitative.Pastel,
+                    )
+                    fig_pie.update_layout(
+                        margin=dict(l=10, r=10, t=10, b=10),
+                        paper_bgcolor="rgba(0,0,0,0)",
+                    )
+                    st.plotly_chart(fig_pie, use_container_width=True)
+                else:
+                    st.info("Sem despesas para compor o gráfico de categorias.")
+
+            with col_g4:
+                st.markdown("##### 🏦 Movimentação por Conta / Cartão")
+                df_conta_bar = (
+                    df_temp.groupby(["Conta", "Tipo"])["Valor"]
+                    .sum()
+                    .reset_index()
+                )
+                if not df_conta_bar.empty:
+                    fig_conta = px.bar(
+                        df_conta_bar,
+                        x="Conta",
+                        y="Valor",
+                        color="Tipo",
+                        barmode="stack",
+                        color_discrete_map={
+                            "Receita": "#00CC96",
+                            "Despesa": "#EF553B",
+                            "Transferência": "#AB63FA",
+                        },
+                    )
+                    fig_conta.update_layout(
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        xaxis_title="",
+                        yaxis_title="R$ (Reais)",
+                        margin=dict(l=10, r=10, t=10, b=10),
+                    )
+                    st.plotly_chart(fig_conta, use_container_width=True)
+                else:
+                    st.info("Sem dados suficientes para o gráfico de contas.")
+
+            # ==================== TRACKING DE DESCRIÇÕES POR MÊS ====================
+            st.markdown("---")
+            st.subheader("🏷️ Detalhamento de Gastos por Descrição e Categoria")
+            st.write(
+                "Acompanhe o ranking dos lançamentos detalhados por descrição com base"
+                " nos filtros ativos."
+            )
+
+            meses_disc_disp = sorted(df_temp["AnoMes"].unique().tolist(), reverse=True)
+            if meses_disc_disp:
+                col_td1, col_td2 = st.columns([2, 2])
+                with col_td1:
+                    mes_disc_escolhido = st.selectbox(
+                        "Filtrar Mês Específico para Descrições",
+                        ["Todos os Meses Filtrados"] + meses_disc_disp,
+                    )
+                with col_td2:
+                    tipo_disc_filtro = st.selectbox(
+                        "Tipo para Rastreio de Descrição",
+                        ["Despesa", "Receita", "Todos"],
+                    )
+
+                df_tracking = df_temp.copy()
+                if mes_disc_escolhido != "Todos os Meses Filtrados":
+                    df_tracking = df_tracking[
+                        df_tracking["AnoMes"] == mes_disc_escolhido
+                    ]
+                if tipo_disc_filtro != "Todos":
+                    df_tracking = df_tracking[df_tracking["Tipo"] == tipo_disc_filtro]
+
+                if not df_tracking.empty:
+                    df_grouped_desc = (
+                        df_tracking.groupby(
+                            ["Data", "Categoria", "Descrição", "Tipo", "Conta"]
+                        )["Valor"]
+                        .sum()
+                        .reset_index()
+                        .sort_values(by="Valor", ascending=False)
+                    )
+
+                    st.dataframe(
+                        df_grouped_desc.style.format({"Valor": "R$ {:,.2f}"}),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+                else:
+                    st.info("Nenhum registro encontrado para os critérios de rastreio.")
+
+            st.markdown("---")
+            st.subheader("📋 Tabela de Lançamentos Filtrados")
+            st.dataframe(df_temp, use_container_width=True)
+    else:
+        st.info("Nenhum lançamento registrado ainda.")
 
 
 # ==================== STATISTICS / ESTATÍSTICAS E PROJEÇÕES ====================
