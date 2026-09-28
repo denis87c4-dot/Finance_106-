@@ -48,6 +48,7 @@ if "lancamentos" not in st.session_state:
       ]
   )
 
+# Garantir compatibilidade com bases antigas que não tinham a coluna Status
 if (
     not st.session_state.lancamentos.empty
     and "Status" not in st.session_state.lancamentos.columns
@@ -89,7 +90,7 @@ if "cartoes" not in st.session_state:
 
 # ==================== ABA KPIS (PRIMEIRA OPÇÃO) ====================
 if aba == "KPIs":
-  st.title("🎯 Central de KPIs Inteligentes & Previsibilidadde de Risco")
+  st.title("🎯 Central de KPIs Inteligentes & Previsibilidade de Risco")
   st.markdown(
       "Diagnóstico patrimonial completo com métricas de **fragilidade"
       " financeira, alavancagem de cartões, previsibilidade de caixa** e"
@@ -115,58 +116,85 @@ if aba == "KPIs":
 
     # ==================== FILTROS PODEROSOS NA BARRA LATERAL ====================
     st.sidebar.markdown("---")
-    st.sidebar.subheader("🎛️ Filtros Globais de KPIs")
+    st.sidebar.subheader("🎛️ Filtros Globais Poderosos")
 
+    # 1. Filtro de Status (Efetivado, Pendente, Budget, etc.)
     status_disponiveis = df["Status"].unique().tolist()
     filtro_status = st.sidebar.multiselect(
-        "Filtrar por Status",
+        "📌 Status do Lançamento",
         options=status_disponiveis,
         default=status_disponiveis,
+        help=(
+            "Filtre entre efetivados, previstos, orçados (budget) ou pendentes."
+        ),
     )
 
+    # 2. Filtro de Tipo (Receita / Despesa)
+    tipos_disponiveis = (
+        df["Tipo"].dropna().unique().tolist()
+        if "Tipo" in df.columns
+        else ["Receita", "Despesa"]
+    )
+    filtro_tipos = st.sidebar.multiselect(
+        "💰 Tipo de Movimentação",
+        options=tipos_disponiveis,
+        default=tipos_disponiveis,
+    )
+
+    # 3. Filtro de Anos
     anos_disponíveis = (
         sorted(df["Data"].dt.year.dropna().unique().astype(int))
         if not df["Data"].dropna().empty
         else [2026]
     )
     filtro_anos = st.sidebar.multiselect(
-        "Filtrar Anos", options=anos_disponíveis, default=anos_disponíveis
+        "📅 Anos de Referência",
+        options=anos_disponíveis,
+        default=anos_disponíveis,
     )
 
+    # 4. Filtro de Contas
     contas_disponíveis = (
         df["Conta"].dropna().unique().tolist()
         if "Conta" in df.columns
         else []
     )
     filtro_contas = st.sidebar.multiselect(
-        "Filtrar Contas", options=contas_disponíveis, default=contas_disponíveis
+        "🏦 Contas / Carteiras",
+        options=contas_disponíveis,
+        default=contas_disponíveis,
     )
 
+    # 5. Filtro de Categorias
     categorias_disponíveis = (
         df["Categoria"].dropna().unique().tolist()
         if "Categoria" in df.columns
         else []
     )
     filtro_categorias = st.sidebar.multiselect(
-        "Filtrar Categorias",
+        "🏷️ Categorias",
         options=categorias_disponíveis,
         default=categorias_disponíveis,
     )
 
+    # 6. Filtro de Período Específico de Datas
+    st.sidebar.markdown("---")
     usar_filtro_data = st.sidebar.checkbox(
-        "Filtrar por Período Específico de Datas", value=False
+        "⏱️ Ativar Intervalo de Datas Personalizado", value=False
     )
     if usar_filtro_data and not df["Data"].dropna().empty:
       min_d = df["Data"].min().date()
       max_d = df["Data"].max().date()
       intervalo_datas = st.sidebar.date_input(
-          "Selecione o Intervalo", value=(min_d, max_d)
+          "Selecione o Período", value=(min_d, max_d)
       )
 
-    # Aplicação dos filtros
+    # ==================== APLICAÇÃO DOS FILTROS PODEROSOS ====================
     df_filtrado = df.copy()
     if filtro_status:
       df_filtrado = df_filtrado[df_filtrado["Status"].isin(filtro_status)]
+    if filtro_tipos and "Tipo" in df_filtrado.columns:
+      df_filtrado = df_filtrado[df_filtrado["Tipo"].isin(filtro_tipos)]
     if filtro_anos:
       df_filtrado = df_filtrado[df_filtrado["Data"].dt.year.isin(filtro_anos)]
     if filtro_contas and "Conta" in df_filtrado.columns:
@@ -175,7 +203,7 @@ if aba == "KPIs":
       df_filtrado = df_filtrado[
           df_filtrado["Categoria"].isin(filtro_categorias)
       ]
-    if usar_filtro_data and len(intervalo_datas) == 2:
+    if usar_filtro_data and "intervalo_datas" in locals() and len(intervalo_datas) == 2:
       d_inicio, d_fim = pd.to_datetime(
           intervalo_datas[0]
       ), pd.to_datetime(intervalo_datas[1])
@@ -294,7 +322,6 @@ if aba == "KPIs":
     )
 
     # 22. Índice de Vulnerabilidade a Curtíssimo Prazo (IVP)
-    # Relação entre despesas essenciais mensais e o caixa livre disponível
     custo_essencial_mensal = desp_essencial / max(meses_unicos, 1)
     kpi_22 = (
         (caixa_total / custo_essencial_mensal)
@@ -330,7 +357,6 @@ if aba == "KPIs":
     )
 
     # 25. Grau de Estresse Financeiro Estrutural (Score Composto 0 a 100)
-    # Quanto maior, mais crítico o risco de desequilíbrio por compromissos futuros
     score_estresse = min(
         max(
             (kpi_8 * 0.4)
@@ -533,6 +559,43 @@ if aba == "KPIs":
       st.plotly_chart(fig_proj, use_container_width=True)
     else:
       st.info("Insira ou ajuste os filtros para visualizar a curva preditiva.")
+
+# ==================== DEMAIS ABAS DO SISTEMA ====================
+elif aba == "Dashboard":
+  st.title("Dashboard Principal")
+  st.info("Painel principal integrado ao sistema.")
+
+elif aba == "Statistics":
+  st.title("Estatísticas Avançadas")
+  st.info("Métricas estatísticas do app.")
+
+elif aba == "Financial Analysis":
+  st.title("Análise Financeira")
+  st.info("Ferramentas de análise profunda.")
+
+elif aba == "🤖 IA & Assistant":
+  st.title("Assistente de Inteligência Artificial")
+  st.info("Conversação e insights automáticos.")
+
+elif aba == "Lançamentos":
+  st.title("Lançamentos de Receitas e Despesas")
+  st.info("Registro de movimentações financeiras.")
+
+elif aba == "Cadastro":
+  st.title("Cadastros Gerais")
+  st.info("Gerenciamento de entidades do sistema.")
+
+elif aba == "Cadastro de Categorias e Contas":
+  st.title("Gerenciamento de Categorias e Contas")
+  st.info("Configuração de contas correntes, carteiras e categorias.")
+
+elif aba == "Cartões de Crédito":
+  st.title("Gerenciamento de Cartões de Crédito")
+  st.info("Controle de limites, datas de fechamento e vencimento.")
+
+elif aba == "Backup & Segurança":
+  st.title("Backup & Segurança")
+  st.info("Rotinas de exportação, importação e proteção de dados.")
 
 
 
