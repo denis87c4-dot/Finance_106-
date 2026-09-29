@@ -18,6 +18,7 @@ st.set_page_config(
 aba = st.sidebar.radio(
     "Navegação",
     [
+        "Graphics",  # <--- Nova aba colocada como a PRIMEIRA opção
         "KPIs",
         "Dashboard",
         "Statistics",
@@ -88,6 +89,406 @@ if "cartoes" not in st.session_state:
       },
   ]
 
+# ==================== LÓGICA DA ABA "Graphics" (PRIMEIRA ABA / ANALÍTICO) ====================
+if aba == "Graphics":
+  st.subheader("📈 Business Intelligence & Painel Analítico Avançado")
+  st.markdown(
+      "Análise macro e microeconômica de performance financeira com foco em"
+      " inteligência de dados."
+  )
+
+  df = st.session_state.lancamentos.copy()
+
+  if df.empty:
+    st.warning(
+        "⚠️ Nenhum lançamento cadastrado ainda. Vá em 'Lançamentos' para"
+        " adicionar dados."
+    )
+  else:
+    # Tratamento de dados essenciais e engenharia de features para análise
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["Ano"] = df["Data"].dt.year
+    df["Mês"] = df["Data"].dt.to_period("M").astype(str)
+    df["DiaDaSemana"] = df["Data"].dt.day_name()
+    dias_map = {
+        "Monday": "Segunda",
+        "Tuesday": "Terça",
+        "Wednesday": "Quarta",
+        "Thursday": "Quinta",
+        "Friday": "Sexta",
+        "Saturday": "Sábado",
+        "Sunday": "Domingo",
+    }
+    df["DiaDaSemanaPt"] = df["DiaDaSemana"].map(dias_map)
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+    if "Status" not in df.columns:
+      df["Status"] = "Efetivado"
+
+    # --- FILTROS ESPECÍFICOS DA ABA GRAPHICS ---
+    with st.expander(
+        "🎛️ Filtros Avançados de Análise Gráfica & Segmentação", expanded=True
+    ):
+      col_f1, col_f2, col_f3 = st.columns(3)
+      with col_f1:
+        anos_disponiveis = sorted(df["Ano"].dropna().unique().astype(int))
+        filtro_ano_graf = st.multiselect(
+            "Filtrar por Ano",
+            options=anos_disponiveis,
+            default=anos_disponiveis,
+        )
+      with col_f2:
+        contas_disponiveis = df["Conta"].dropna().unique().tolist()
+        filtro_conta_graf = st.multiselect(
+            "Filtrar por Conta",
+            options=contas_disponiveis,
+            default=contas_disponiveis,
+        )
+      with col_f3:
+        status_disponiveis = df["Status"].dropna().unique().tolist()
+        filtro_status_graf = st.multiselect(
+            "Filtrar por Status",
+            options=status_disponiveis,
+            default=status_disponiveis,
+        )
+
+    # Aplicar filtros
+    df_filtrado = df[
+        (df["Ano"].isin(filtro_ano_graf))
+        & (df["Conta"].isin(filtro_conta_graf))
+        & (df["Status"].isin(filtro_status_graf))
+    ]
+
+    if df_filtrado.empty:
+      st.info(
+          "Nenhum dado encontrado para os filtros selecionados nesta aba."
+      )
+    else:
+      # --- CÁLCULO DAS 10 KPIS AVANÇADAS ---
+      receitas_totais = df_filtrado[df_filtrado["Tipo"] == "Receita"][
+          "Valor"
+      ].sum()
+      despesas_totais = df_filtrado[df_filtrado["Tipo"] == "Despesa"][
+          "Valor"
+      ].sum()
+      fluxo_caixa_livre = receitas_totais - despesas_totais
+
+      taxa_poupanca = (
+          (fluxo_caixa_livre / receitas_totais * 100)
+          if receitas_totais > 0
+          else 0.0
+      )
+      meses_unicos = df_filtrado["Mês"].nunique()
+      burn_rate = despesas_totais / meses_unicos if meses_unicos > 0 else 0.0
+      saldo_atual = receitas_totais - despesas_totais
+      runway = (
+          (saldo_atual / burn_rate)
+          if burn_rate > 0 and saldo_atual > 0
+          else 0.0
+      )
+
+      despesas_cartao = df_filtrado[
+          df_filtrado["Conta"].str.contains(
+              "Cartão|Credit|Nubank|Inter", case=False, na=False
+          )
+      ]["Valor"].sum()
+      comprometimento_cartao = (
+          (despesas_cartao / receitas_totais * 100)
+          if receitas_totais > 0
+          else 0.0
+      )
+
+      gasto_por_cat = (
+          df_filtrado[df_filtrado["Tipo"] == "Despesa"]
+          .groupby("Categoria")["Valor"]
+          .sum()
+      )
+      max_cat_valor = gasto_por_cat.max() if not gasto_por_cat.empty else 0.0
+      concentracao_cat = (
+          (max_cat_valor / despesas_totais * 100)
+          if despesas_totais > 0
+          else 0.0
+      )
+      maior_categoria = (
+          gasto_por_cat.idxmax() if not gasto_por_cat.empty else "N/A"
+      )
+
+      gastos_mensais = (
+          df_filtrado[df_filtrado["Tipo"] == "Despesa"]
+          .groupby("Mês")["Valor"]
+          .sum()
+      )
+      volatilidade = (
+          float(gastos_mensais.std()) if len(gastos_mensais) > 1 else 0.0
+      )
+      qtd_despesas = len(df_filtrado[df_filtrado["Tipo"] == "Despesa"])
+      ticket_medio = (
+          (despesas_totais / qtd_despesas) if qtd_despesas > 0 else 0.0
+      )
+
+      essenciais = ["Alimentação", "Moradia", "Transporte"]
+      gasto_essencial = df_filtrado[
+          df_filtrado["Categoria"].isin(essenciais)
+      ]["Valor"].sum()
+      cobertura_essencial = (
+          (receitas_totais / gasto_essencial)
+          if gasto_essencial > 0
+          else 999.0
+      )
+
+      meses_ordenados = sorted(gastos_mensais.index.tolist())
+      if len(meses_ordenados) >= 2:
+        ult_mes = gastos_mensais.loc[meses_ordenados[-1]]
+        penult_mes = gastos_mensais.loc[meses_ordenados[-2]]
+        crescimento_mom = (
+            ((ult_mes - penult_mes) / penult_mes * 100)
+            if penult_mes > 0
+            else 0.0
+        )
+      else:
+        crescimento_mom = 0.0
+
+      # --- RENDERIZAÇÃO DOS 10 KPIs EM CARDS ---
+      st.markdown("### 📌 Indicadores Estratégicos de Desempenho (KPIs)")
+
+      c1, c2, c3, c4 = st.columns(4)
+      c1.metric(
+          "Taxa de Poupança",
+          f"{taxa_poupanca:.1f}%",
+          delta="Saudável" if taxa_poupanca > 20 else "Atenção",
+      )
+      c2.metric("Burn Rate Mensal", f"R$ {burn_rate:,.2f}")
+      c3.metric(
+          "Runway (Meses)",
+          f"{runway:.1f} meses" if runway > 0 else "0 meses",
+          delta_color="off",
+      )
+      c4.metric(
+          "Fluxo de Caixa Livre",
+          f"R$ {fluxo_caixa_livre:,.2f}",
+          delta="Positivo" if fluxo_caixa_livre >= 0 else "Negativo",
+      )
+
+      c5, c6, c7, c8 = st.columns(4)
+      c5.metric("Comprometimento Cartão", f"{comprometimento_cartao:.1f}%")
+      c6.metric(
+          "Maior Foco de Gasto",
+          f"{maior_categoria}",
+          f"{concentracao_cat:.1f}% do total",
+      )
+      c7.metric("Volatilidade Mensal", f"R$ {volatilidade:,.2f}")
+      c8.metric("Ticket Médio (Despesa)", f"R$ {ticket_medio:,.2f}")
+
+      c9, c10, _, _ = st.columns(4)
+      c9.metric("Cobertura Essenciais", f"{cobertura_essencial:.2f}x")
+      c10.metric("Variação MoM (Despesas)", f"{crescimento_mom:+.1f}%")
+
+      st.markdown("---")
+
+      # ==================== PAINEL DE 8 GRÁFICOS AVANÇADOS ====================
+      st.markdown("### 📊 Visualizações Analíticas & Comportamentais")
+
+      # --- Bloco 1: Tradicionais Aprimorados ---
+      col_g1, col_g2 = st.columns(2)
+
+      with col_g1:
+        st.subheader("Evolução Temporal: Receitas vs Despesas")
+        df_temporal = (
+            df_filtrado.groupby(["Mês", "Tipo"])["Valor"].sum().reset_index()
+        )
+        fig_evolucao = px.bar(
+            df_temporal,
+            x="Mês",
+            y="Valor",
+            color="Tipo",
+            barmode="group",
+            color_discrete_map={"Receita": "#2ecc71", "Despesa": "#e74c3c"},
+            template="plotly_dark",
+        )
+        st.plotly_chart(fig_evolucao, use_container_width=True)
+
+      with col_g2:
+        st.subheader("Composição de Despesas por Categoria")
+        df_cat = (
+            df_filtrado[df_filtrado["Tipo"] == "Despesa"]
+            .groupby("Categoria")["Valor"]
+            .sum()
+            .reset_index()
+        )
+        if not df_cat.empty:
+          fig_pizza = px.pie(
+              df_cat,
+              names="Categoria",
+              values="Valor",
+              hole=0.4,
+              template="plotly_dark",
+          )
+          st.plotly_chart(fig_pizza, use_container_width=True)
+        else:
+          st.info("Sem dados de despesas para exibir o gráfico de categorias.")
+
+      # --- Bloco 2: Linha de Acumulado & Barras Horizontais de Conta ---
+      col_g3, col_g4 = st.columns(2)
+
+      with col_g3:
+        st.subheader("Tendência de Acumulado de Caixa (Fluxo Livre)")
+        df_fluxo = (
+            df_filtrado.pivot_table(
+                index="Mês", columns="Tipo", values="Valor", aggfunc="sum"
+            )
+            .fillna(0)
+            .reset_index()
+        )
+        if "Receita" not in df_fluxo.columns:
+          df_fluxo["Receita"] = 0
+        if "Despesa" not in df_fluxo.columns:
+          df_fluxo["Despesa"] = 0
+        df_fluxo["Livre"] = df_fluxo["Receita"] - df_fluxo["Despesa"]
+        df_fluxo["Acumulado"] = df_fluxo["Livre"].cumsum()
+
+        fig_linha = px.line(
+            df_fluxo,
+            x="Mês",
+            y="Acumulado",
+            markers=True,
+            template="plotly_dark",
+            title="Patrimônio Líquido Acumulado no Período",
+        )
+        fig_linha.update_traces(line_color="#3498db", line_width=3)
+        st.plotly_chart(fig_linha, use_container_width=True)
+
+      with col_g4:
+        st.subheader("Distribuição de Gastos por Conta / Origem")
+        df_conta = (
+            df_filtrado[df_filtrado["Tipo"] == "Despesa"]
+            .groupby("Conta")["Valor"]
+            .sum()
+            .reset_index()
+        )
+        if not df_conta.empty:
+          fig_bar_h = px.bar(
+              df_conta,
+              x="Valor",
+              y="Conta",
+              orientation="h",
+              template="plotly_dark",
+              color="Valor",
+              color_continuous_scale="Reds",
+          )
+          st.plotly_chart(fig_bar_h, use_container_width=True)
+        else:
+          st.info("Sem dados por conta para exibir.")
+
+      st.markdown("---")
+      st.markdown("### 🔬 Analytics Avançado (Novas Perspectivas)")
+
+      # --- Bloco 3: Boxplot de Outliers & Heatmap de Dias da Semana ---
+      col_g5, col_g6 = st.columns(2)
+
+      with col_g5:
+        st.subheader("Boxplot: Dispersão e Outliers de Despesas")
+        df_despesas = df_filtrado[df_filtrado["Tipo"] == "Despesa"]
+        if not df_despesas.empty:
+          fig_box = px.box(
+              df_despesas,
+              x="Categoria",
+              y="Valor",
+              color="Categoria",
+              template="plotly_dark",
+              title="Análise de Assimetria e Fugas de Orçamento por Categoria",
+          )
+          fig_box.update_layout(showlegend=False)
+          st.plotly_chart(fig_box, use_container_width=True)
+        else:
+          st.info("Sem dados suficientes de despesas para gerar o Boxplot.")
+
+      with col_g6:
+        st.subheader("Heatmap: Sazonalidade de Gastos (Dia da Semana)")
+        df_heatmap = (
+            df_despesas.groupby(["Mês", "DiaDaSemanaPt"])["Valor"]
+            .sum()
+            .reset_index()
+        )
+        if not df_heatmap.empty:
+          dias_ordem = [
+              "Segunda",
+              "Terça",
+              "Quarta",
+              "Quinta",
+              "Sexta",
+              "Sábado",
+              "Domingo",
+          ]
+          fig_heat = px.density_heatmap(
+              df_heatmap,
+              x="DiaDaSemanaPt",
+              y="Mês",
+              z="Valor",
+              category_orders={"DiaDaSemanaPt": dias_ordem},
+              color_continuous_scale="YlOrRd",
+              template="plotly_dark",
+              title="Intensidade de Gastos por Dia da Semana ao Longo dos Meses",
+          )
+          st.plotly_chart(fig_heat, use_container_width=True)
+        else:
+          st.info("Sem dados para gerar o Mapa de Calor temporal.")
+
+      # --- Bloco 4: Waterfall Chart (Cascata) & Gráfico de Radar ---
+      col_g7, col_g8 = st.columns(2)
+
+      with col_g7:
+        st.subheader("Waterfall: Composição do Fluxo de Caixa")
+        cat_desp = (
+            df_filtrado[df_filtrado["Tipo"] == "Despesa"]
+            .groupby("Categoria")["Valor"]
+            .sum()
+        )
+
+        medidas = ["absolute"] + ["relative"] * len(cat_desp) + ["total"]
+        x_vals = ["Receitas Totais"] + list(cat_desp.index) + ["Caixa Líquido"]
+        y_vals = (
+            [receitas_totais]
+            + [-v for v in cat_desp.values]
+            + [fluxo_caixa_livre]
+        )
+
+        fig_waterfall = go.Figure(
+            go.Waterfall(
+                name="Fluxo",
+                orientation="v",
+                measure=medidas,
+                x=x_vals,
+                textposition="outside",
+                text=[f"R$ {val:,.2f}" for val in y_vals],
+                y=y_vals,
+                connector={"line": {"color": "rgb(63, 63, 63)"}},
+            )
+        )
+        fig_waterfall.update_layout(
+            template="plotly_dark",
+            title="Impacto de Cada Categoria sobre o Saldo Inicial",
+            showlegend=False,
+        )
+        st.plotly_chart(fig_waterfall, use_container_width=True)
+
+      with col_g8:
+        st.subheader("Radar Chart: Perfil de Peso das Categorias")
+        if not cat_desp.empty and despesas_totais > 0:
+          cat_perc = (cat_desp / despesas_totais * 100).reset_index()
+          fig_radar = px.line_polar(
+              cat_perc,
+              r="Valor",
+              theta="Categoria",
+              line_close=True,
+              template="plotly_dark",
+              title="Distribuição Percentual de Alocação de Gastos",
+          )
+          fig_radar.update_traces(fill="toself", line_color="#e74c3c")
+          st.plotly_chart(fig_radar, use_container_width=True)
+        else:
+          st.info(
+              "Dados insuficientes para gerar o Radar de Alocação de Gastos."
+          )
+
 # ==================== FILTROS GLOBAIS PODEROSOS (BARRA LATERAL) ====================
 st.sidebar.markdown("---")
 st.sidebar.subheader("🎛️ Filtros Globais Poderosos")
@@ -99,7 +500,7 @@ if not df_global.empty:
     df_global["Status"] = "Efetivado"
   df_global["Status"] = df_global["Status"].fillna("Efetivado")
 
-  # 1. Filtro de Status (Efetivado, Budget, Previsto, etc.)
+  # 1. Filtro de Status
   status_disponiveis = df_global["Status"].unique().tolist()
   filtro_status = st.sidebar.multiselect(
       "📌 Status do Lançamento",
@@ -107,7 +508,7 @@ if not df_global.empty:
       default=status_disponiveis,
   )
 
-  # 2. Filtro de Tipo (Receita / Despesa)
+  # 2. Filtro de Tipo
   tipos_disponiveis = (
       df_global["Tipo"].dropna().unique().tolist()
       if "Tipo" in df_global.columns
@@ -176,6 +577,8 @@ else:
   )
   usar_filtro_data = False
 
+
+            
 # ==================== ABA KPIS (PRIMEIRA OPÇÃO) ====================
 if aba == "KPIs":
   st.title("🎯 Central de KPIs Inteligentes & Previsibilidade de Risco")
