@@ -18,7 +18,8 @@ st.set_page_config(
 aba = st.sidebar.radio(
     "Navegação",
     [
-        "Graphics",  # <--- Nova aba de Predições, Cash Flow & KPIs colocada como a PRIMEIRA opção
+        "Sophisticated Graphics",  # <--- Aba com 20 Gráficos + Regressões + Média Ponderada como 1ª opção
+        "Graphics",
         "KPIs",
         "Dashboard",
         "Statistics",
@@ -50,7 +51,6 @@ if "lancamentos" not in st.session_state:
       ]
   )
 
-# Garantir compatibilidade com bases antigas que não tinham colunas essenciais
 if (
     not st.session_state.lancamentos.empty
     and "Status" not in st.session_state.lancamentos.columns
@@ -95,6 +95,516 @@ if "cartoes" not in st.session_state:
           "Vencimento": 17,
       },
   ]
+
+
+# =====================================================================
+# ABA: "Sophisticated Graphics" (20 Gráficos + Regressão + Média Ponderada)
+# =====================================================================
+if aba == "Sophisticated Graphics":
+  st.markdown("# 🚀 Sophisticated Graphics: Painel 360° com Média Ponderada")
+  st.markdown(
+      "Análise visual avançada com **20 gráficos estatísticos e preditivos**"
+      " (incluindo Regressão OLS e Média Móvel Ponderada), 100% vinculados aos"
+      " seus filtros poderosos."
+  )
+
+  df = st.session_state.get("lancamentos", pd.DataFrame()).copy()
+
+  if df.empty:
+    st.warning(
+        "⚠️ Nenhum lançamento cadastrado ainda. Vá até a aba de Lançamentos para"
+        " popular seus dados."
+    )
+  else:
+    # Tratamento e tipagem
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["AnoMês"] = df["Data"].dt.to_period("M").astype(str)
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+
+    if "Status" not in df.columns:
+      df["Status"] = "Efetivado"
+    if "Cenario" not in df.columns:
+      df["Cenario"] = "Efetivado"
+    if "Tipo" not in df.columns:
+      df["Tipo"] = "Despesa"
+
+    # ==================== BARRA DE FILTROS PODEROSOS ====================
+    with st.expander(
+        "🎛️ Filtros Poderosos Globais (Comandam os 20 Gráficos)", expanded=True
+    ):
+      f_col1, f_col2, f_col3, f_col4 = st.columns(4)
+
+      with f_col1:
+        cenarios_disp = (
+            df["Cenario"].unique().tolist()
+            if "Cenario" in df.columns
+            else ["Efetivado", "Budget"]
+        )
+        filtro_cenario = st.multiselect(
+            "Cenário (Budget vs Efetivado)",
+            options=cenarios_disp,
+            default=cenarios_disp,
+        )
+        filtro_status = st.multiselect(
+            "Status",
+            options=df["Status"].unique().tolist(),
+            default=df["Status"].unique().tolist(),
+        )
+
+      with f_col2:
+        tipos_disp = df["Tipo"].unique().tolist()
+        filtro_tipos = st.multiselect(
+            "Tipo de Movimento", options=tipos_disp, default=tipos_disp
+        )
+        contas_disp = (
+            df["Conta"].unique().tolist() if "Conta" in df.columns else []
+        )
+        filtro_contas = st.multiselect(
+            "Contas / Cartões", options=contas_disp, default=[]
+        )
+
+      with f_col3:
+        categorias_disp = (
+            df["Categoria"].unique().tolist()
+            if "Categoria" in df.columns
+            else []
+        )
+        filtro_categorias = st.multiselect(
+            "Categorias", options=categorias_disp, default=[]
+        )
+        anos_disp = sorted(df["Data"].dt.year.dropna().unique().tolist())
+        filtro_anos = st.multiselect(
+            "Anos", options=anos_disp, default=anos_disp
+        )
+
+      with f_col4:
+        usar_data_custom = st.checkbox("Ativar Intervalo de Datas Específico")
+        if usar_data_custom:
+          min_d, max_d = df["Data"].min(), df["Data"].max()
+          intervalo_datas = st.date_input(
+              "Período de Análise", value=[min_d, max_d]
+          )
+
+    # ==================== APLICAÇÃO DOS FILTROS ====================
+    df_f = df.copy()
+    if filtro_cenario and "Cenario" in df_f.columns:
+      df_f = df_f[df_f["Cenario"].isin(filtro_cenario)]
+    if filtro_status:
+      df_f = df_f[df_f["Status"].isin(filtro_status)]
+    if filtro_tipos and "Tipo" in df_f.columns:
+      df_f = df_f[df_f["Tipo"].isin(filtro_tipos)]
+    if filtro_contas and "Conta" in df_f.columns:
+      df_f = df_f[df_f["Conta"].isin(filtro_contas)]
+    if filtro_categorias and "Categoria" in df_f.columns:
+      df_f = df_f[df_f["Categoria"].isin(filtro_categorias)]
+    if filtro_anos:
+      df_f = df_f[df_f["Data"].dt.year.isin(filtro_anos)]
+    if usar_data_custom and len(intervalo_datas) == 2:
+      d_ini, d_fim = pd.to_datetime(intervalo_datas[0]), pd.to_datetime(
+          intervalo_datas[1]
+      )
+      df_f = df_f[(df_f["Data"] >= d_ini) & (df_f["Data"] <= d_fim)]
+
+    if df_f.empty:
+      st.warning(
+          "⚠️ Nenhum dado encontrado para os filtros selecionados. Altere os"
+          " filtros para visualizar os gráficos."
+      )
+    else:
+      # Preparação de Bases Consolidadas
+      rec_df = df_f[df_f["Tipo"].str.lower() == "receita"]
+      desp_df = df_f[df_f["Tipo"].str.lower() == "despesa"]
+
+      df_mensal = (
+          df_f.groupby(["AnoMês", "Tipo"])["Valor"]
+          .sum()
+          .unstack(fill_value=0.0)
+      )
+      if "Receita" not in df_mensal.columns:
+        df_mensal["Receita"] = 0.0
+      if "Despesa" not in df_mensal.columns:
+        df_mensal["Despesa"] = 0.0
+      df_mensal["CashFlow"] = df_mensal["Receita"] - df_mensal["Despesa"]
+      df_mensal["Acumulado"] = df_mensal["CashFlow"].cumsum()
+      df_mensal = df_mensal.reset_index()
+
+      # ===================================================================
+      # GRÁFICOS 1 A 5: TENDÊNCIAS, CASH FLOW E CURVAS DE ACUMULADO
+      # ===================================================================
+      st.markdown("---")
+      st.subheader(
+          "📈 Bloco 1: Dinâmica de Cash Flow, Tendência & Curvas Acumuladas"
+      )
+
+      gc1, gc2 = st.columns(2)
+
+      with gc1:
+        fig1 = px.line(
+            df_mensal,
+            x="AnoMês",
+            y="CashFlow",
+            markers=True,
+            title="1. Evolução do Fluxo de Caixa Mensal (Efetivo/Budget)",
+            color_discrete_sequence=["#00CC96"],
+        )
+        fig1.add_hline(
+            y=0, line_dash="dash", line_color="red", annotation_text="Break-even"
+        )
+        st.plotly_chart(fig1, use_container_width=True)
+
+        fig3 = px.area(
+            df_mensal,
+            x="AnoMês",
+            y=["Receita", "Despesa"],
+            title=(
+                "3. Volume de Entradas vs Saídas (Área de Absorção de Liquidez)"
+            ),
+            color_discrete_map={"Receita": "#00CC96", "Despesa": "#EF553B"},
+        )
+        st.plotly_chart(fig3, use_container_width=True)
+
+        fig5 = px.scatter(
+            df_f,
+            x="Data",
+            y="Valor",
+            color="Tipo",
+            size="Valor",
+            hover_data=["Categoria", "Conta"],
+            title="5. Dispersão de Impacto Financeiro por Transação",
+            color_discrete_map={"Receita": "#00CC96", "Despesa": "#EF553B"},
+        )
+        st.plotly_chart(fig5, use_container_width=True)
+
+      with gc2:
+        fig2 = px.area(
+            df_mensal,
+            x="AnoMês",
+            y="Acumulado",
+            title="2. Curva de Crescimento do Cash Flow Acumulado",
+            color_discrete_sequence=["#636EFA"],
+        )
+        st.plotly_chart(fig2, use_container_width=True)
+
+        fig4 = px.bar(
+            df_mensal,
+            x="AnoMês",
+            y=["Receita", "Despesa"],
+            barmode="group",
+            title="4. Comparativo Mensal de Receitas e Despesas",
+            color_discrete_map={"Receita": "#00CC96", "Despesa": "#EF553B"},
+        )
+        st.plotly_chart(fig4, use_container_width=True)
+
+      # ===================================================================
+      # GRÁFICOS 6 A 10: CATEGORIAS, DISTRIBUIÇÕES E VOLATILIDADE
+      # ===================================================================
+      st.markdown("---")
+      st.subheader("📊 Bloco 2: Estrutura de Gastos, Categorias & Volatilidade")
+
+      gc3, gc4 = st.columns(2)
+
+      with gc3:
+        if not desp_df.empty:
+          cat_desp = (
+              desp_df.groupby("Categoria")["Valor"].sum().reset_index()
+          )
+          fig6 = px.pie(
+              cat_desp,
+              names="Categoria",
+              values="Valor",
+              hole=0.4,
+              title="6. Concentração de Despesas por Categoria",
+          )
+          st.plotly_chart(fig6, use_container_width=True)
+        else:
+          st.info("Sem dados de despesa para o gráfico 6.")
+
+        if not desp_df.empty:
+          fig8 = px.box(
+              desp_df,
+              x="Categoria",
+              y="Valor",
+              color="Categoria",
+              title="8. Análise de Dispersão e Outliers (Box Plot por Categoria)",
+          )
+          st.plotly_chart(fig8, use_container_width=True)
+        else:
+          st.info("Sem dados suficientes para o gráfico 8.")
+
+        if not df_f.empty:
+          fig10 = px.violin(
+              df_f,
+              y="Valor",
+              x="Tipo",
+              box=True,
+              points="all",
+              color="Tipo",
+              title="10. Perfil de Densidade de Valores (Violin Plot)",
+          )
+          st.plotly_chart(fig10, use_container_width=True)
+        else:
+          st.info("Sem dados para o gráfico 10.")
+
+      with gc4:
+        if not rec_df.empty:
+          cat_rec = rec_df.groupby("Categoria")["Valor"].sum().reset_index()
+          fig7 = px.pie(
+              cat_rec,
+              names="Categoria",
+              values="Valor",
+              hole=0.4,
+              title="7. Fontes e Origens de Receitas",
+          )
+          st.plotly_chart(fig7, use_container_width=True)
+        else:
+          st.info("Sem dados de receita para o gráfico 7.")
+
+        if not df_f.empty:
+          fig9 = px.treemap(
+              df_f,
+              path=["Tipo", "Categoria", "Descrição"],
+              values="Valor",
+              title="9. Mapa Hierárquico de Alocação (Treemap 360°)",
+          )
+          st.plotly_chart(fig9, use_container_width=True)
+        else:
+          st.info("Sem dados para o gráfico 9.")
+
+      # ===================================================================
+      # GRÁFICOS 11 A 15: CONTAS, CENÁRIOS, STATUS E PROGRESSÕES
+      # ===================================================================
+      st.markdown("---")
+      st.subheader(
+          "⚡ Bloco 3: Contas, Cenários (Budget vs Efetivado) & Status"
+      )
+
+      gc5, gc6 = st.columns(2)
+
+      with gc5:
+        if "Conta" in df_f.columns and not df_f.empty:
+          conta_df = df_f.groupby(["Conta", "Tipo"])["Valor"].sum().reset_index()
+          fig11 = px.bar(
+              conta_df,
+              y="Conta",
+              x="Valor",
+              color="Tipo",
+              barmode="stack",
+              orientation="h",
+              title="11. Saldo Consolidado por Conta / Cartão",
+              color_discrete_map={"Receita": "#00CC96", "Despesa": "#EF553B"},
+          )
+          st.plotly_chart(fig11, use_container_width=True)
+        else:
+          st.info("Coluna Conta não disponível para o gráfico 11.")
+
+        if "Cenario" in df_f.columns and not df_f.empty:
+          cenario_df = (
+              df_f.groupby(["Cenario", "Tipo"])["Valor"].sum().reset_index()
+          )
+          fig13 = px.bar(
+              cenario_df,
+              x="Cenario",
+              y="Valor",
+              color="Tipo",
+              barmode="group",
+              title="13. Desvio Orçamentário: Budget vs Efetivado",
+              color_discrete_map={"Receita": "#00CC96", "Despesa": "#EF553B"},
+          )
+          st.plotly_chart(fig13, use_container_width=True)
+        else:
+          st.info("Coluna Cenário não disponível para o gráfico 13.")
+
+        if "Status" in df_f.columns and not df_f.empty:
+          fig15 = px.sunburst(
+              df_f,
+              path=["Tipo", "Status", "Categoria"],
+              values="Valor",
+              title="15. Estrutura Multidimensional (Sunburst)",
+          )
+          st.plotly_chart(fig15, use_container_width=True)
+        else:
+          st.info("Dados insuficientes para o gráfico 15.")
+
+      with gc6:
+        if "Status" in df_f.columns and not df_f.empty:
+          status_df = (
+              df_f.groupby(["Status", "Tipo"])["Valor"].sum().reset_index()
+          )
+          fig12 = px.bar(
+              status_df,
+              x="Status",
+              y="Valor",
+              color="Tipo",
+              barmode="group",
+              title="12. Impacto Financeiro por Status Operacional",
+              color_discrete_map={"Receita": "#00CC96", "Despesa": "#EF553B"},
+          )
+          st.plotly_chart(fig12, use_container_width=True)
+        else:
+          st.info("Coluna Status não disponível para o gráfico 12.")
+
+        if not desp_df.empty:
+          radar_df = (
+              desp_df.groupby("Categoria")["Valor"].sum().reset_index()
+          )
+          fig14 = px.line_polar(
+              radar_df,
+              r="Valor",
+              theta="Categoria",
+              line_close=True,
+              title="14. Radar de Vulnerabilidade e Exposição por Categoria",
+          )
+          fig14.update_traces(fill="toself")
+          st.plotly_chart(fig14, use_container_width=True)
+        else:
+          st.info("Dados de despesa insuficientes para o gráfico 14.")
+
+      # ===================================================================
+      # GRÁFICOS 16 A 20: REGRESSÃO OLS & MÉDIA MÓVEL PONDERADA (WMA)
+      # ===================================================================
+      st.markdown("---")
+      st.subheader(
+          "🔮 Bloco 4: Regressão OLS & Média Móvel Ponderada (WMA) de"
+          " Previsibilidade"
+      )
+
+      gc7, gc8 = st.columns(2)
+
+      with gc7:
+        # Gráfico 16: Regressão + Média Móvel Ponderada (WMA) de Despesas
+        if not desp_df.empty:
+          desp_temp = desp_df.groupby("Data")["Valor"].sum().reset_index()
+          # Cálculo da Média Móvel Ponderada (WMA) com pesos lineares
+          window = 3
+          weights = np.arange(1, window + 1)
+          desp_temp["WMA"] = (
+              desp_temp["Valor"]
+              .rolling(window)
+              .apply(
+                  lambda x: np.dot(x, weights) / weights.sum(), raw=True
+              )
+          )
+
+          fig16 = px.scatter(
+              desp_temp,
+              x="Data",
+              y="Valor",
+              trendline="ols",
+              title=(
+                  "16. Despesas: Regressão OLS + Média Móvel Ponderada (WMA)"
+              ),
+          )
+          # Adicionando a linha WMA no mesmo gráfico
+          fig16.add_trace(
+              go.Scatter(
+                  x=desp_temp["Data"],
+                  y=desp_temp["WMA"],
+                  mode="lines",
+                  name="WMA (Ponderada)",
+                  line=dict(color="orange", width=3, dash="dot"),
+              )
+          )
+          st.plotly_chart(fig16, use_container_width=True)
+        else:
+          st.info("Dados insuficientes para o gráfico 16.")
+
+        # Gráfico 18: Histograma com Curva de Densidade de Gastos
+        if not desp_df.empty:
+          fig18 = px.histogram(
+              desp_df,
+              x="Valor",
+              marginal="rug",
+              nbins=30,
+              title="18. Distribuição de Frequência e Densidade de Despesas",
+              color_discrete_sequence=["#EF553B"],
+          )
+          st.plotly_chart(fig18, use_container_width=True)
+        else:
+          st.info("Dados insuficientes para o gráfico 18.")
+
+        # Gráfico 20: Cascata de Impacto Líquido (Waterfall)
+        if not df_f.empty:
+          tot_rec = rec_df["Valor"].sum()
+          tot_desp = desp_df["Valor"].sum()
+          fig20 = go.Figure(
+              go.Waterfall(
+                  name="Cash Flow",
+                  orientation="v",
+                  measure=["relative", "relative", "total"],
+                  x=["Receitas Totais", "Despesas Totais", "Saldo Líquido"],
+                  textposition="outside",
+                  text=[
+                      f"R$ {tot_rec:,.2f}",
+                      f"-R$ {tot_desp:,.2f}",
+                      f"R$ {tot_rec - tot_desp:,.2f}",
+                  ],
+                  y=[tot_rec, -tot_desp, tot_rec - tot_desp],
+                  connector={"line": {"color": "rgb(63, 63, 63)"}},
+              )
+          )
+          fig20.update_layout(
+              title="20. Cascata de Impacto Líquido (Waterfall Cash Flow)",
+              showlegend=False,
+          )
+          st.plotly_chart(fig20, use_container_width=True)
+        else:
+          st.info("Dados insuficientes para o gráfico 20.")
+
+      with gc8:
+        # Gráfico 17: Regressão + Média Móvel Ponderada (WMA) de Receitas
+        if not rec_df.empty:
+          rec_temp = rec_df.groupby("Data")["Valor"].sum().reset_index()
+          window = 3
+          weights = np.arange(1, window + 1)
+          rec_temp["WMA"] = (
+              rec_temp["Valor"]
+              .rolling(window)
+              .apply(
+                  lambda x: np.dot(x, weights) / weights.sum(), raw=True
+              )
+          )
+
+          fig17 = px.scatter(
+              rec_temp,
+              x="Data",
+              y="Valor",
+              trendline="ols",
+              title=(
+                  "17. Receitas: Regressão OLS + Média Móvel Ponderada (WMA)"
+              ),
+          )
+          fig17.add_trace(
+              go.Scatter(
+                  x=rec_temp["Data"],
+                  y=rec_temp["WMA"],
+                  mode="lines",
+                  name="WMA (Ponderada)",
+                  line=dict(color="green", width=3, dash="dot"),
+              )
+          )
+          st.plotly_chart(fig17, use_container_width=True)
+        else:
+          st.info("Dados insuficientes para o gráfico 17.")
+
+        # Gráfico 19: Curva de Progressão Contínua do Patrimônio
+        if not df_f.empty:
+          df_sorted = df_f.sort_values(by="Data").copy()
+          df_sorted["ValorAcum"] = df_sorted["Valor"].cumsum()
+          fig19 = px.line(
+              df_sorted,
+              x="Data",
+              y="ValorAcum",
+              title="19. Curva de Progressão Contínua do Patrimônio Filtrado",
+              color_discrete_sequence=["#00CC96"],
+          )
+          st.plotly_chart(fig19, use_container_width=True)
+        else:
+          st.info("Dashboard sem dados suficientes para o gráfico 19.")
+
+else:
+  # Placeholder para as demais abas do sistema
+  st.markdown(f"# 🚧 Aba: {aba}")
+  st.write("Conteúdo correspondente às demais seções do sistema.")
 
 
 # =====================================================================
