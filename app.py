@@ -18,6 +18,7 @@ st.set_page_config(
 aba = st.sidebar.radio(
     "Navegação",
     [
+        "KPIs",
         "Dashboard",
         "Statistics",
         "Financial Analysis",
@@ -86,6 +87,526 @@ if "cartoes" not in st.session_state:
           "Vencimento": 17,
       },
   ]
+
+# ==================== FILTROS GLOBAIS PODEROSOS (BARRA LATERAL) ====================
+st.sidebar.markdown("---")
+st.sidebar.subheader("🎛️ Filtros Globais Poderosos")
+
+df_global = st.session_state.lancamentos.copy()
+if not df_global.empty:
+  df_global["Data"] = pd.to_datetime(df_global["Data"], errors="coerce")
+  if "Status" not in df_global.columns:
+    df_global["Status"] = "Efetivado"
+  df_global["Status"] = df_global["Status"].fillna("Efetivado")
+
+  # 1. Filtro de Status (Efetivado, Budget, Previsto, etc.)
+  status_disponiveis = df_global["Status"].unique().tolist()
+  filtro_status = st.sidebar.multiselect(
+      "📌 Status do Lançamento",
+      options=status_disponiveis,
+      default=status_disponiveis,
+  )
+
+  # 2. Filtro de Tipo (Receita / Despesa)
+  tipos_disponiveis = (
+      df_global["Tipo"].dropna().unique().tolist()
+      if "Tipo" in df_global.columns
+      else ["Receita", "Despesa"]
+  )
+  filtro_tipos = st.sidebar.multiselect(
+      "💰 Tipo de Movimentação",
+      options=tipos_disponiveis,
+      default=tipos_disponiveis,
+  )
+
+  # 3. Filtro de Anos
+  anos_disponíveis = (
+      sorted(df_global["Data"].dt.year.dropna().unique().astype(int))
+      if not df_global["Data"].dropna().empty
+      else [2026]
+  )
+  filtro_anos = st.sidebar.multiselect(
+      "📅 Anos de Referência",
+      options=anos_disponíveis,
+      default=anos_disponíveis,
+  )
+
+  # 4. Filtro de Contas
+  contas_disponíveis = (
+      df_global["Conta"].dropna().unique().tolist()
+      if "Conta" in df_global.columns
+      else []
+  )
+  filtro_contas = st.sidebar.multiselect(
+      "🏦 Contas / Carteiras",
+      options=contas_disponíveis,
+      default=contas_disponíveis,
+  )
+
+  # 5. Filtro de Categorias
+  categorias_disponíveis = (
+      df_global["Categoria"].dropna().unique().tolist()
+      if "Categoria" in df_global.columns
+      else []
+  )
+  filtro_categorias = st.sidebar.multiselect(
+      "🏷️ Categorias",
+      options=categorias_disponíveis,
+      default=categorias_disponíveis,
+  )
+
+  # 6. Filtro de Período Específico de Datas
+  st.sidebar.markdown("---")
+  usar_filtro_data = st.sidebar.checkbox(
+      "⏱️ Ativar Intervalo de Datas Personalizado", value=False
+  )
+  if usar_filtro_data and not df_global["Data"].dropna().empty:
+    min_d = df_global["Data"].min().date()
+    max_d = df_global["Data"].max().date()
+    intervalo_datas = st.sidebar.date_input(
+        "Selecione o Período", value=(min_d, max_d)
+    )
+else:
+  filtro_status, filtro_tipos, filtro_anos, filtro_contas, filtro_categorias = (
+      [],
+      [],
+      [],
+      [],
+      [],
+  )
+  usar_filtro_data = False
+
+# ==================== ABA KPIS (PRIMEIRA OPÇÃO) ====================
+if aba == "KPIs":
+  st.title("🎯 Central de KPIs Inteligentes & Previsibilidade de Risco")
+  st.markdown(
+      "Diagnóstico patrimonial completo com métricas de **fragilidade"
+      " financeira, alavancagem de cartões, previsibilidade de caixa** e"
+      " filtros globais reativos."
+  )
+
+  df = st.session_state.lancamentos.copy()
+
+  if df.empty:
+    st.warning(
+        "Nenhum lançamento cadastrado ainda. Vá até a aba 'Lançamentos' para"
+        " popular seus dados."
+    )
+  else:
+    # Conversões e tratamento de dados
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["AnoMês"] = df["Data"].dt.to_period("M").astype(str)
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+
+    if "Status" not in df.columns:
+      df["Status"] = "Efetivado"
+    df["Status"] = df["Status"].fillna("Efetivado")
+
+    # ==================== APLICAÇÃO DOS FILTROS PODEROSOS ====================
+    df_filtrado = df.copy()
+    if filtro_status:
+      df_filtrado = df_filtrado[df_filtrado["Status"].isin(filtro_status)]
+    if filtro_tipos and "Tipo" in df_filtrado.columns:
+      df_filtrado = df_filtrado[df_filtrado["Tipo"].isin(filtro_tipos)]
+    if filtro_anos:
+      df_filtrado = df_filtrado[df_filtrado["Data"].dt.year.isin(filtro_anos)]
+    if filtro_contas and "Conta" in df_filtrado.columns:
+      df_filtrado = df_filtrado[df_filtrado["Conta"].isin(filtro_contas)]
+    if filtro_categorias and "Categoria" in df_filtrado.columns:
+      df_filtrado = df_filtrado[
+          df_filtrado["Categoria"].isin(filtro_categorias)
+      ]
+    if usar_filtro_data and "intervalo_datas" in locals() and len(intervalo_datas) == 2:
+      d_inicio, d_fim = pd.to_datetime(
+          intervalo_datas[0]
+      ), pd.to_datetime(intervalo_datas[1])
+      df_filtrado = df_filtrado[
+          (df_filtrado["Data"] >= d_inicio) & (df_filtrado["Data"] <= d_fim)
+      ]
+
+    receitas_df = df_filtrado[df_filtrado["Tipo"].str.lower() == "receita"]
+    despesas_df = df_filtrado[df_filtrado["Tipo"].str.lower() == "despesa"]
+
+    total_receitas = receitas_df["Valor"].sum()
+    total_despesas = despesas_df["Valor"].sum()
+    saldo_liquido = total_receitas - total_despesas
+
+    # ==================== CÁLCULO DOS 25 KPIS (COM FOCO EM PREVISIBILIDADE) ====================
+    kpi_1 = saldo_liquido  # 1. Saldo Líquido Global
+    kpi_2 = total_receitas  # 2. Total de Receitas
+    kpi_3 = total_despesas  # 3. Total de Despesas
+    kpi_4 = (
+        (saldo_liquido / total_receitas * 100) if total_receitas > 0 else 0.0
+    )  # 4. Taxa de Poupança (%)
+
+    dias_periodo = (
+        (df_filtrado["Data"].max() - df_filtrado["Data"].min()).days + 1
+        if not df_filtrado.empty
+        else 1
+    )
+    dias_periodo = max(dias_periodo, 1)
+    kpi_5 = total_despesas / dias_periodo  # 5. Custo Médio Diário
+
+    meses_unicos = (
+        df_filtrado["AnoMês"].nunique() if not df_filtrado.empty else 1
+    )
+    kpi_6 = total_despesas / max(meses_unicos, 1)  # 6. Burn Rate Mensal
+
+    caixa_total = (
+        df[df["Tipo"].str.lower() == "receita"]["Valor"].sum()
+        - df[df["Tipo"].str.lower() == "despesa"]["Valor"].sum()
+    )
+    kpi_7 = caixa_total / kpi_6 if kpi_6 > 0 else 0.0  # 7. Cobertura de Reserva
+
+    essenciais = ["Moradia", "Alimentação"]
+    desp_essencial = despesas_df[
+        despesas_df["Categoria"].isin(essenciais)
+    ]["Valor"].sum()
+    kpi_8 = (
+        (desp_essencial / total_receitas * 100) if total_receitas > 0 else 0.0
+    )  # 8. Comprometimento Essencial
+
+    kpi_9 = (
+        total_despesas / len(despesas_df) if not despesas_df.empty else 0.0
+    )  # 9. Ticket Médio por Transação
+    kpi_10 = (
+        despesas_df["Valor"].max() if not despesas_df.empty else 0.0
+    )  # 10. Maior Pico de Despesa
+
+    media_mensal_liquida = (
+        (total_receitas - total_despesas) / max(meses_unicos, 1)
+    )
+    kpi_11 = (
+        caixa_total + (media_mensal_liquida * 3)
+    )  # 11. Projeção de Saldo (+3M)
+
+    salarios = receitas_df[
+        receitas_df["Categoria"].str.lower() == "salário"
+    ]["Valor"].sum()
+    kpi_12 = (
+        ((total_receitas - salarios) / total_receitas * 100)
+        if total_receitas > 0
+        else 0.0
+    )  # 12. Índice Renda Passiva / Outras
+
+    desp_por_mes = despesas_df.groupby("AnoMês")["Valor"].sum()
+    kpi_13 = (
+        desp_por_mes.std() if len(desp_por_mes) > 1 else 0.0
+    )  # 13. Volatilidade de Gastos
+
+    discricionarias = ["Lazer"]
+    desp_disc = despesas_df[
+        despesas_df["Categoria"].isin(discricionarias)
+    ]["Valor"].sum()
+    kpi_14 = (
+        (desp_disc / total_despesas * 100) if total_despesas > 0 else 0.0
+    )  # 14. Gasto Discricionário
+
+    kpi_15 = len(df_filtrado)  # 15. Volume Transacional
+    kpi_16 = (
+        (total_receitas / (total_despesas + 1)) if total_despesas > 0 else 100.0
+    )  # 16. Eficiência de Arrecadação
+    kpi_17 = (
+        (caixa_total / kpi_5) if kpi_5 > 0 else 0.0
+    )  # 17. Runway Financeiro (Dias)
+    kpi_18 = kpi_4  # 18. Margem Pessoal (%)
+
+    parcelados = (
+        df_filtrado[
+            df_filtrado["Parcelas"].notna()
+            & (df_filtrado["Parcelas"] != "")
+            & (df_filtrado["Parcelas"] != "1")
+        ]
+        if "Parcelas" in df_filtrado.columns
+        else pd.DataFrame()
+    )
+    kpi_19 = len(parcelados)  # 19. Transações Parceladas Ativas
+    kpi_20 = media_mensal_liquida * 12  # 20. Potencial Anual (CAGR)
+
+    # --- 5 NOVOS KPIS DE PREVISIBILIDADE E RISCO DE CARTÃO/PASSIVOS ---
+    valor_parcelado_total = (
+        parcelados["Valor"].sum() if not parcelados.empty else 0.0
+    )
+    kpi_21 = (
+        (valor_parcelado_total / total_receitas * 100)
+        if total_receitas > 0
+        else 0.0
+    )
+
+    custo_essencial_mensal = desp_essencial / max(meses_unicos, 1)
+    kpi_22 = (
+        (caixa_total / custo_essencial_mensal)
+        if custo_essencial_mensal > 0
+        else 99.0
+    )
+
+    limite_total_cartoes = sum(
+        [c.get("Limite", 0) for c in st.session_state.get("cartoes", [])]
+    )
+    gastos_cartao = (
+        df_filtrado[
+            df_filtrado["Conta"].str.contains(
+                "cartão|credito", case=False, na=False
+            )
+            | df_filtrado["Categoria"].str.contains(
+                "cartão", case=False, na=False
+            )
+        ]["Valor"].sum()
+        if not df_filtrado.empty
+        else 0.0
+    )
+    kpi_23 = (
+        (gastos_cartao / limite_total_cartoes * 100)
+        if limite_total_cartoes > 0
+        else 0.0
+    )
+
+    kpi_24 = (
+        (salarios / total_receitas * 100) if total_receitas > 0 else 100.0
+    )
+
+    score_estresse = min(
+        max(
+            (kpi_8 * 0.4)
+            + (kpi_21 * 0.4)
+            - (min(kpi_7, 6) / 6 * 20),  # Essenciais + Parcelamentos - Reserva
+            0.0,
+        ),
+        100.0,
+    )
+    kpi_25 = score_estresse
+
+    # ==================== PAINEL DE DIAGNÓSTICO INTELIGENTE DE RISCO ====================
+    st.markdown("### 🔍 Diagnóstico Avançado de Resiliência & Fragilidade")
+    if kpi_25 < 30:
+      st.success(
+          "🛡️ **Status de Saúde: Robusto e Seguro.** Seu índice de fragilidade"
+          f" está controlado ({kpi_25:.1f}/100). Você possui excelente margem"
+          " de manobra contra imprevistos."
+      )
+    elif kpi_25 < 60:
+      st.warning(
+          "⚠️ **Status de Saúde: Atenção Moderada.** Seus compromissos futuros"
+          f" (parcelamentos e essenciais) atingem {kpi_25:.1f}/100 no índice de"
+          " estresse. Evite novas alavancagens em cartões no curto prazo."
+      )
+    else:
+      st.error(
+          "🚨 **Status de Risco Crítico:** Alerta de fragilidade financeira"
+          f" acionado ({kpi_25:.1f}/100). Alto comprometimento da renda com"
+          " parcelamentos e faturas de cartão. Recomenda-se forte contenção de"
+          " gastos discricionários."
+      )
+
+    # ==================== EXIBIÇÃO EM BLOCOS DE CARDS (25 KPIS) ====================
+    st.markdown("---")
+    st.subheader(
+        "📊 1. Visão Geral Patrimonial & Fluxo (Passado & Presente)"
+    )
+    col1, col2, col3, col4, col5 = st.columns(5)
+    col1.metric(
+        "1. Saldo Líquido",
+        f"R$ {kpi_1:,.2f}",
+        delta=f"R$ {media_mensal_liquida:,.2f}/mês",
+    )
+    col2.metric("2. Total Receitas", f"R$ {kpi_2:,.2f}")
+    col3.metric("3. Total Despesas", f"R$ {kpi_3:,.2f}")
+    col4.metric(
+        "4. Taxa de Poupança",
+        f"{kpi_4:.1f}%",
+        delta="Ideal > 20%",
+        delta_color="normal" if kpi_4 >= 20 else "inverse",
+    )
+    col5.metric(
+        "7. Cobertura de Reserva",
+        f"{kpi_7:.1f} meses",
+        delta="Meta: 6m",
+        delta_color="normal" if kpi_7 >= 6 else "inverse",
+    )
+
+    st.markdown("---")
+    st.subheader("⚡ 2. Indicadores de Ritmo, Custos & Riscos")
+    col6, col7, col8, col9, col10 = st.columns(5)
+    col6.metric("5. Custo Médio Diário", f"R$ {kpi_5:,.2f} / dia")
+    col7.metric("6. Burn Rate Mensal", f"R$ {kpi_6:,.2f} / mês")
+    col8.metric("8. Comprometimento Essencial", f"{kpi_8:.1f}%")
+    col9.metric("9. Ticket Médio Despesa", f"R$ {kpi_9:,.2f}")
+    col10.metric("10. Maior Pico de Gasto", f"R$ {kpi_10:,.2f}")
+
+    st.markdown("---")
+    st.subheader("🔮 3. Projeções Futuras & Eficiência Estrutural")
+    col11, col12, col13, col14, col15 = st.columns(5)
+    col11.metric(
+        "11. Projeção Caixa (+3M)",
+        f"R$ {kpi_11:,.2f}",
+        delta="Tendência Linear",
+    )
+    col12.metric("12. Índice Renda Passiva", f"{kpi_12:.1f}%")
+    col13.metric("13. Volatilidade Mensal", f"R$ {kpi_13:,.2f}")
+    col14.metric("14. Gasto Discricionário", f"{kpi_14:.1f}%")
+    col15.metric("15. Volume Transacional", f"{kpi_15} lçs")
+
+    st.markdown("---")
+    st.subheader("🛡️ 4. Solidez, Alavancagem & Longevidade")
+    col16, col17, col18, col19, col20 = st.columns(5)
+    col16.metric("16. Eficiência Arrecadação", f"{kpi_16:.2f}x")
+    col17.metric(
+        "17. Runway Financeiro",
+        f"{kpi_17:.0f} dias",
+        delta="Dias de fôlego",
+    )
+    col18.metric("18. Margem Pessoal", f"{kpi_18:.1f}%")
+    col19.metric("19. Transações Parceladas", f"{kpi_19} ativas")
+    col20.metric("20. Potencial Anual (CAGR)", f"R$ {kpi_20:,.2f}")
+
+    st.markdown("---")
+    st.subheader(
+        "🎯 5. Indicadores Avançados de Previsibilidade & Fragilidade"
+    )
+    col21, col22, col23, col24, col25 = st.columns(5)
+    col21.metric(
+        "21. Fragilidade Parcelada",
+        f"{kpi_21:.1f}%",
+        delta="Comprometimento da Renda",
+        delta_color="inverse" if kpi_21 > 30 else "normal",
+    )
+    col22.metric(
+        "22. IVP (Vulnerabilidade Curta)",
+        f"{kpi_22:.1f} meses",
+        delta="Fôlego Essencial Puro",
+    )
+    col23.metric(
+        "23. Alavancagem de Cartão",
+        f"{kpi_23:.1f}%",
+        delta="Do limite total em uso",
+        delta_color="inverse" if kpi_23 > 50 else "normal",
+    )
+    col24.metric("24. Previsibilidade de Caixa", f"{kpi_24:.1f}%")
+    col25.metric(
+        "25. Score Estresse Estrutural",
+        f"{kpi_25:.1f} pts",
+        delta="Escala 0 a 100",
+        delta_color="inverse" if kpi_25 > 50 else "normal",
+    )
+
+    # ==================== GRÁFICOS PODEROSOS DE ANÁLISE ====================
+    st.markdown("---")
+    st.subheader(
+        "📈 Painel Gráfico Dinâmico (Reativo aos Filtros de Status, Datas e"
+        " Categorias)"
+    )
+
+    gcol1, gcol2 = st.columns(2)
+
+    with gcol1:
+      st.markdown("### 📊 Evolução Mensal (Receitas vs. Despesas)")
+      if not df_filtrado.empty:
+        evolu_df = (
+            df_filtrado.groupby(["AnoMês", "Tipo"])["Valor"]
+            .sum()
+            .reset_index()
+        )
+        fig_evolucao = px.bar(
+            evolu_df,
+            x="AnoMês",
+            y="Valor",
+            color="Tipo",
+            barmode="group",
+            color_discrete_map={"Receita": "#2ecc71", "Despesa": "#e74c3c"},
+            template="plotly_dark",
+        )
+        fig_evolucao.update_layout(
+            margin=dict(l=20, r=20, t=30, b=20), height=350
+        )
+        st.plotly_chart(fig_evolucao, use_container_width=True)
+      else:
+        st.info("Sem dados para o gráfico de evolução com os filtros.")
+
+    with gcol2:
+      st.markdown("### 🍩 Composição de Despesas por Categoria")
+      if not despesas_df.empty:
+        cat_df = despesas_df.groupby("Categoria")["Valor"].sum().reset_index()
+        fig_donut = px.pie(
+            cat_df,
+            names="Categoria",
+            values="Valor",
+            hole=0.4,
+            template="plotly_dark",
+        )
+        fig_donut.update_layout(
+            margin=dict(l=20, r=20, t=30, b=20), height=350
+        )
+        st.plotly_chart(fig_donut, use_container_width=True)
+      else:
+        st.info("Sem despesas registradas para o gráfico de categorias.")
+
+    st.markdown("### 🚀 Simulação Preditiva de Fluxo de Caixa Acumulado")
+    if not df_filtrado.empty:
+      df_temp = df_filtrado.sort_values("Data").copy()
+      df_temp["FluxoDiario"] = df_temp.apply(
+          lambda row: row["Valor"]
+          if str(row["Tipo"]).lower() == "receita"
+          else -row["Valor"],
+          axis=1,
+      )
+      df_temp["CaixaAcumulado"] = df_temp["FluxoDiario"].cumsum()
+
+      fig_proj = px.line(
+          df_temp,
+          x="Data",
+          y="CaixaAcumulado",
+          markers=True,
+          template="plotly_dark",
+          title=(
+              "Curva de Crescimento do Patrimônio Líquido Baseada nos Filtros"
+              " Atuais"
+          ),
+      )
+      fig_proj.update_traces(line_color="#3498db", line_width=3)
+      fig_proj.update_layout(margin=dict(l=20, r=20, t=40, b=20), height=350)
+      st.plotly_chart(fig_proj, use_container_width=True)
+    else:
+      st.info("Insira ou ajuste os filtros para visualizar a curva preditiva.")
+
+# ==================== DEMAIS ABAS DO SISTEMA ====================
+elif aba == "Dashboard":
+  st.title("Dashboard Principal")
+  st.info("Painel principal integrado ao sistema.")
+
+elif aba == "Statistics":
+  st.title("Estatísticas Avançadas")
+  st.info("Métricas estatísticas do app.")
+
+elif aba == "Financial Analysis":
+  st.title("Análise Financeira")
+  st.info("Ferramentas de análise profunda.")
+
+elif aba == "🤖 IA & Assistant":
+  st.title("Assistente de Inteligência Artificial")
+  st.info("Conversação e insights automáticos.")
+
+elif aba == "Lançamentos":
+  st.title("Lançamentos de Receitas e Despesas")
+  st.info("Registro de movimentações financeiras.")
+
+elif aba == "Cadastro":
+  st.title("Cadastros Gerais")
+  st.info("Gerenciamento de entidades do sistema.")
+
+elif aba == "Cadastro de Categorias e Contas":
+  st.title("Gerenciamento de Categorias e Contas")
+  st.info("Configuração de contas correntes, carteiras e categorias.")
+
+elif aba == "Cartões de Crédito":
+  st.title("Gerenciamento de Cartões de Crédito")
+  st.info("Controle de limites, datas de fechamento e vencimento.")
+
+elif aba == "Backup & Segurança":
+  st.title("Backup & Segurança")
+  st.info("Rotinas de exportação, importação e proteção de dados.")
+
+
+# ==================== ESTADOS DA SESSÃO =======
 
 
 # ==================== DASHBOARD ====================
