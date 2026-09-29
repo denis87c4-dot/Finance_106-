@@ -18,7 +18,7 @@ st.set_page_config(
 aba = st.sidebar.radio(
     "Navegação",
     [
-        "Graphics",  # <--- Nova aba colocada como a PRIMEIRA opção
+        "Graphics",  # <--- Nova aba de Predições, Cash Flow & KPIs colocada como a PRIMEIRA opção
         "KPIs",
         "Dashboard",
         "Statistics",
@@ -46,15 +46,22 @@ if "lancamentos" not in st.session_state:
           "Parcelas",
           "Modo Valor",
           "Status",
+          "Cenario",
       ]
   )
 
-# Garantir compatibilidade com bases antigas que não tinham a coluna Status
+# Garantir compatibilidade com bases antigas que não tinham colunas essenciais
 if (
     not st.session_state.lancamentos.empty
     and "Status" not in st.session_state.lancamentos.columns
 ):
   st.session_state.lancamentos["Status"] = "Efetivado"
+
+if (
+    not st.session_state.lancamentos.empty
+    and "Cenario" not in st.session_state.lancamentos.columns
+):
+  st.session_state.lancamentos["Cenario"] = "Efetivado"
 
 if "categorias" not in st.session_state:
   st.session_state.categorias = [
@@ -88,6 +95,365 @@ if "cartoes" not in st.session_state:
           "Vencimento": 17,
       },
   ]
+
+
+# =====================================================================
+# LÓGICA DA ABA: "Graphics" (Predições, Cash Flow & 20 KPIs Integrados)
+# =====================================================================
+if aba == "Graphics":
+  st.markdown("# 🔮 Predições, Cash Flow & Painel Executivo 360°")
+  st.markdown(
+      "Painel avançado de inteligência preditiva onde **todos os 20 KPIs e"
+      " gráficos** respondem dinamicamente aos filtros de Data, Budget/Efetivado,"
+      " Categorias e Status."
+  )
+
+  df = st.session_state.get("lancamentos", pd.DataFrame()).copy()
+
+  if df.empty:
+    st.warning(
+        "⚠️ Nenhum lançamento cadastrado ainda. Vá até a aba de Lançamentos para"
+        " popular seus dados."
+    )
+  else:
+    # Tratamento e tipagem robusta de dados
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["AnoMês"] = df["Data"].dt.to_period("M").astype(str)
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+
+    if "Status" not in df.columns:
+      df["Status"] = "Efetivado"
+    if "Cenario" not in df.columns:
+      df["Cenario"] = "Efetivado"
+    if "Tipo" not in df.columns:
+      df["Tipo"] = "Despesa"
+
+    # ==================== BARRA DE FILTROS PODEROSOS ====================
+    with st.expander(
+        "🎛️ Filtros Poderosos Globais (Afetam Todos os KPIs e Gráficos)",
+        expanded=True,
+    ):
+      f_col1, f_col2, f_col3, f_col4 = st.columns(4)
+
+      with f_col1:
+        cenarios_disp = (
+            df["Cenario"].unique().tolist()
+            if "Cenario" in df.columns
+            else ["Efetivado", "Budget"]
+        )
+        filtro_cenario = st.multiselect(
+            "Cenário (Budget vs Efetivado)",
+            options=cenarios_disp,
+            default=cenarios_disp,
+        )
+
+        filtro_status = st.multiselect(
+            "Status",
+            options=df["Status"].unique().tolist(),
+            default=df["Status"].unique().tolist(),
+        )
+
+      with f_col2:
+        tipos_disp = df["Tipo"].unique().tolist()
+        filtro_tipos = st.multiselect(
+            "Tipo de Movimento", options=tipos_disp, default=tipos_disp
+        )
+
+        contas_disp = (
+            df["Conta"].unique().tolist() if "Conta" in df.columns else []
+        )
+        filtro_contas = st.multiselect(
+            "Contas / Cartões", options=contas_disp, default=[]
+        )
+
+      with f_col3:
+        categorias_disp = (
+            df["Categoria"].unique().tolist()
+            if "Categoria" in df.columns
+            else []
+        )
+        filtro_categorias = st.multiselect(
+            "Categorias", options=categorias_disp, default=[]
+        )
+
+        anos_disp = sorted(df["Data"].dt.year.dropna().unique().tolist())
+        filtro_anos = st.multiselect(
+            "Anos", options=anos_disp, default=anos_disp
+        )
+
+      with f_col4:
+        usar_data_custom = st.checkbox("Ativar Intervalo de Datas Específico")
+        if usar_data_custom:
+          min_d, max_d = df["Data"].min(), df["Data"].max()
+          intervalo_datas = st.date_input(
+              "Período de Análise", value=[min_d, max_d]
+          )
+
+    # ==================== APLICAÇÃO RIGOROSA DOS FILTROS ====================
+    df_f = df.copy()
+    if filtro_cenario and "Cenario" in df_f.columns:
+      df_f = df_f[df_f["Cenario"].isin(filtro_cenario)]
+    if filtro_status:
+      df_f = df_f[df_f["Status"].isin(filtro_status)]
+    if filtro_tipos and "Tipo" in df_f.columns:
+      df_f = df_f[df_f["Tipo"].isin(filtro_tipos)]
+    if filtro_contas and "Conta" in df_f.columns:
+      df_f = df_f[df_f["Conta"].isin(filtro_contas)]
+    if filtro_categorias and "Categoria" in df_f.columns:
+      df_f = df_f[df_f["Categoria"].isin(filtro_categorias)]
+    if filtro_anos:
+      df_f = df_f[df_f["Data"].dt.year.isin(filtro_anos)]
+    if usar_data_custom and len(intervalo_datas) == 2:
+      d_ini, d_fim = pd.to_datetime(intervalo_datas[0]), pd.to_datetime(
+          intervalo_datas[1]
+      )
+      df_f = df_f[(df_f["Data"] >= d_ini) & (df_f["Data"] <= d_fim)]
+
+    # ==================== CÁLCULOS 100% BASEADOS NO DF_FILTRADO ====================
+    receitas_df = df_f[df_f["Tipo"].str.lower() == "receita"]
+    despesas_df = df_f[df_f["Tipo"].str.lower() == "despesa"]
+
+    total_receitas = receitas_df["Valor"].sum()
+    total_despesas = despesas_df["Valor"].sum()
+    saldo_liquido = total_receitas - total_despesas
+
+    meses_unicos = df_f["AnoMês"].nunique() if not df_f.empty else 1
+    meses_unicos = max(meses_unicos, 1)
+
+    media_mensal_receita = total_receitas / meses_unicos
+    media_mensal_despesa = total_despesas / meses_unicos
+    media_mensal_liquida = saldo_liquido / meses_unicos
+
+    dias_periodo = (
+        (df_f["Data"].max() - df_f["Data"].min()).days + 1
+        if not df_f.empty
+        else 1
+    )
+    dias_periodo = max(dias_periodo, 1)
+
+    custo_medio_diario = total_despesas / dias_periodo
+    burn_rate_mensal = media_mensal_despesa
+
+    cobertura_reserva = (
+        (total_receitas - total_despesas) / burn_rate_mensal
+        if burn_rate_mensal > 0
+        else 0.0
+    )
+
+    essenciais = ["Moradia", "Alimentação", "Saúde", "Educação", "Contas Básicas"]
+    desp_essencial = despesas_df[
+        despesas_df["Categoria"].isin(essenciais)
+    ]["Valor"].sum()
+    comprometimento_essencial = (
+        (desp_essencial / total_receitas * 100) if total_receitas > 0 else 0.0
+    )
+
+    ticket_medio_transacao = (
+        (total_despesas / len(despesas_df)) if not despesas_df.empty else 0.0
+    )
+    maior_pico_gasto = (
+        despesas_df["Valor"].max() if not despesas_df.empty else 0.0
+    )
+
+    projecao_caixa_3m = saldo_liquido + (media_mensal_liquida * 3)
+    projecao_caixa_6m = saldo_liquido + (media_mensal_liquida * 6)
+
+    desp_por_mes = despesas_df.groupby("AnoMês")["Valor"].sum()
+    volatilidade_gastos = (
+        desp_por_mes.std() if len(desp_por_mes) > 1 else 0.0
+    )
+
+    discricionarias = ["Lazer", "Viagem", "Entretenimento", "Compras"]
+    desp_disc = despesas_df[
+        despesas_df["Categoria"].isin(discricionarias)
+    ]["Valor"].sum()
+    gasto_discricionario_pct = (
+        (desp_disc / total_despesas * 100) if total_despesas > 0 else 0.0
+    )
+
+    volume_transacional = len(df_f)
+    eficiencia_arrecadacao = (
+        (total_receitas / (total_despesas + 1)) if total_despesas > 0 else 100.0
+    )
+    runway_dias = (
+        (saldo_liquido / custo_medio_diario)
+        if custo_medio_diario > 0 and saldo_liquido > 0
+        else 0.0
+    )
+    taxa_poupanca = (
+        (saldo_liquido / total_receitas * 100) if total_receitas > 0 else 0.0
+    )
+
+    parcelados = (
+        df_f[
+            df_f["Parcelas"].notna()
+            & (df_f["Parcelas"] != "")
+            & (df_f["Parcelas"] != "1")
+        ]
+        if "Parcelas" in df_f.columns
+        else pd.DataFrame()
+    )
+    transacoes_parceladas = len(parcelados)
+    potencial_anual_cagr = media_mensal_liquida * 12
+
+    # ==================== DIAGNÓSTICO INTELIGENTE REATIVO ====================
+    st.markdown("---")
+    st.markdown("### 🔍 Diagnóstico Executivo Reativo (Baseado nos Filtros)")
+    if saldo_liquido >= 0:
+      st.success(
+          f"🟢 **Status Superavitário:** Para os filtros selecionados, o saldo"
+          f" líquido é de **R$ {saldo_liquido:,.2f}** (Média de R$"
+          f" {media_mensal_liquida:,.2f}/mês)."
+      )
+    else:
+      st.warning(
+          f"⚠️ **Status Deficitário:** Os filtros aplicados revelam um déficit"
+          f" de **R$ {saldo_liquido:,.2f}**. Reveja as categorias e o cenário"
+          " de Budget."
+      )
+
+    # ==================== OS 20 KPIS VINCULADOS AOS FILTROS ====================
+    st.markdown("---")
+    st.subheader("📊 Bloco 1: Visão Patrimonial & Fluxo Filtrado")
+    c1, c2, c3, c4, c5 = st.columns(5)
+    c1.metric(
+        "1. Saldo Líquido",
+        f"R$ {saldo_liquido:,.2f}",
+        delta=f"R$ {media_mensal_liquida:,.2f}/mês",
+    )
+    c2.metric("2. Total Receitas", f"R$ {total_receitas:,.2f}")
+    c3.metric("3. Total Despesas", f"R$ {total_despesas:,.2f}", delta_color="inverse")
+    c4.metric(
+        "4. Taxa de Poupança",
+        f"{taxa_poupanca:.1f}%",
+        delta="Meta > 20%",
+        delta_color="normal" if taxa_poupanca >= 20 else "inverse",
+    )
+    c5.metric("5. Cobertura do Período", f"{cobertura_reserva:.1f} meses")
+
+    st.markdown("---")
+    st.subheader("⚡ Bloco 2: Ritmo, Custos & Riscos Filtrados")
+    c6, c7, c8, c9, c10 = st.columns(5)
+    c6.metric("6. Custo Médio Diário", f"R$ {custo_medio_diario:,.2f} / dia")
+    c7.metric("7. Burn Rate Mensal", f"R$ {burn_rate_mensal:,.2f} / mês")
+    c8.metric("8. Comprometimento Essencial", f"{comprometimento_essencial:.1f}%")
+    c9.metric("9. Ticket Médio Despesa", f"R$ {ticket_medio_transacao:,.2f}")
+    c10.metric(
+        "10. Maior Pico de Gasto",
+        f"R$ {maior_pico_gasto:,.2f}",
+        delta_color="inverse",
+    )
+
+    st.markdown("---")
+    st.subheader("🔮 Bloco 3: Projeções Futuras & Eficiência")
+    c11, c12, c13, c14, c15 = st.columns(5)
+    c11.metric(
+        "11. Projeção Caixa (+3M)",
+        f"R$ {projecao_caixa_3m:,.2f}",
+        delta="Tendência Linear",
+    )
+    c12.metric(
+        "12. Projeção Caixa (+6M)",
+        f"R$ {projecao_caixa_6m:,.2f}",
+        delta="Horizonte Longo",
+    )
+    c13.metric(
+        "13. Volatilidade Mensal",
+        f"R$ {volatilidade_gastos:,.2f}",
+        delta="Desvio Padrão",
+    )
+    c14.metric("14. Gasto Discricionário", f"{gasto_discricionario_pct:.1f}%")
+    c15.metric("15. Volume Transacional", f"{volume_transacional} lçs")
+
+    st.markdown("---")
+    st.subheader("🎯 Bloco 4: Resiliência & Indicadores Avançados")
+    c16, c17, c18, c19, c20 = st.columns(5)
+    c16.metric("16. Eficiência de Arrecadação", f"{eficiencia_arrecadacao:.2f}x")
+    c17.metric("17. Runway Financeiro", f"{runway_dias:.0f} dias")
+    c18.metric("18. Margem Pessoal (%)", f"{taxa_poupanca:.1f}%")
+    c19.metric("19. Transações Parceladas", f"{transacoes_parceladas} ativas")
+    c20.metric("20. Potencial Anual (CAGR)", f"R$ {potencial_anual_cagr:,.2f}")
+
+    # ==================== GRÁFICOS REATIVOS ====================
+    st.markdown("---")
+    st.subheader("📈 Análise Gráfica Dinâmica (Reage aos Filtros)")
+
+    if not df_f.empty:
+      df_mensal = (
+          df_f.groupby(["AnoMês", "Tipo"])["Valor"]
+          .sum()
+          .unstack(fill_value=0.0)
+      )
+      if "Receita" not in df_mensal.columns:
+        df_mensal["Receita"] = 0.0
+      if "Despesa" not in df_mensal.columns:
+        df_mensal["Despesa"] = 0.0
+      df_mensal["Cash Flow Mensal"] = (
+          df_mensal["Receita"] - df_mensal["Despesa"]
+      )
+      df_mensal["Acumulado"] = df_mensal["Cash Flow Mensal"].cumsum()
+
+      g_col1, g_col2 = st.columns(2)
+      with g_col1:
+        st.markdown("##### 📊 Fluxo Mensal (Receitas vs Despesas)")
+        st.bar_chart(df_mensal[["Receita", "Despesa"]])
+      with g_col2:
+        st.markdown("##### 📉 Curva de Cash Flow Acumulado")
+        st.line_chart(df_mensal["Acumulado"])
+
+      st.markdown("##### 🌊 Saldo Líquido Mensal")
+      st.line_chart(df_mensal["Cash Flow Mensal"])
+    else:
+      st.info("Nenhum dado encontrado para os filtros selecionados.")
+
+    # ==================== TABELA DETALHADA REATIVA ====================
+    st.markdown("---")
+    st.subheader("🔍 Auditoria de Lançamentos Filtrados")
+
+    col_t1, col_t2 = st.columns([3, 1])
+    with col_t1:
+      st.write("Registros correspondentes aos filtros ativos:")
+    with col_t2:
+      qtd_exibida = st.selectbox(
+          "Linhas visíveis", options=[25, 50, 100, "Todas"], index=0
+      )
+
+    if not df_f.empty:
+      cols_mostrar = [
+          c
+          for c in [
+              "Data",
+              "Cenario",
+              "Status",
+              "Tipo",
+              "Conta",
+              "Categoria",
+              "Valor",
+              "Parcelas",
+          ]
+          if c in df_f.columns
+      ]
+      df_exibicao = df_f[cols_mostrar].sort_values(by="Data", ascending=False)
+      if qtd_exibida != "Todas":
+        df_exibicao = df_exibicao.head(int(qtd_exibida))
+
+      st.dataframe(df_exibicao, use_container_width=True)
+
+      csv_data = df_f.to_csv(index=False).encode("utf-8")
+      st.download_button(
+          label="📥 Baixar Dados Filtrados (CSV)",
+          data=csv_data,
+          file_name="cash_flow_filtrado.csv",
+          mime="text/csv",
+      )
+    else:
+      st.write("Nenhum registro para exibir.")
+
+else:
+  # Placeholder para as demais abas do sistema
+  st.markdown(f"# 🚧 Aba: {aba}")
+  st.write("Conteúdo correspondente às demais seções do sistema.")
+
 
 # ==================== LÓGICA DA ABA "Graphics" (PRIMEIRA ABA / ANALÍTICO) ====================
 if aba == "Graphics":
