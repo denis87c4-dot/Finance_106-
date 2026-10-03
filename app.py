@@ -2886,4 +2886,1181 @@ elif aba == "Financial Analysis":
 
       media_caixa_periodo = fluxos.mean() if len(fluxos) > 0 else 0.0
       try:
-        vf_ca
+        vf_calculado = npf.fv(taxa_juros_futuro, meses_projecao, -media_caixa_periodo, 0)
+      except Exception:
+        vf_calculado = 0.0
+
+      st.markdown("---")
+      st.subheader("📊 KPIs Corporativos de Retorno & Viabilidade")
+
+      kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+
+      with kpi1:
+        st.metric(
+            label="💵 VPL / NPV (Valor Presente Líquido)",
+            value=f"R$ {vpl_calculado:,.2f}",
+            delta="Viabilidade do Caixa" if vpl_calculado >= 0 else "Alerta Deficitário",
+            delta_color="normal" if vpl_calculado >= 0 else "inverse"
+        )
+      with kpi2:
+        st.metric(
+            label="📈 TIR / IRR (Taxa Interna de Retorno)",
+            value=f"{tir_calculada:.2f}% a.p.",
+            delta="Retorno Efetivo do Período"
+        )
+      with kpi3:
+        st.metric(
+            label="🔮 Valor Futuro (VF / FV Projetado)",
+            value=f"R$ {vf_calculado:,.2f}",
+            delta=f"Em {meses_projecao} períodos"
+        )
+      with kpi4:
+        media_liquida = fluxos.mean()
+        cor_delta = "normal" if media_liquida >= 0 else "inverse"
+        st.metric(
+            label="⚖️ Média Líquida por Período",
+            value=f"R$ {media_liquida:,.2f}",
+            delta="Fluxo Médio",
+            delta_color=cor_delta
+        )
+
+      if vpl_calculado < 0 or media_liquida < 0:
+        st.markdown(
+            """
+            <div style="padding: 15px; border-radius: 8px; background-color: rgba(239, 85, 59, 0.15); border: 1px solid #EF553B; margin-top: 20px; margin-bottom: 20px;">
+                <h4 style="color: #EF553B; margin: 0;">🚨 ATENÇÃO: Alerta de Desequilíbrio Financeiro</h4>
+                <p style="margin: 5px 0 0 0; color: #333;">O seu Valor Presente Líquido (VPL) ou o fluxo líquido médio estão apontando valores negativos para os filtros selecionados. Considere revisar as despesas ou renegociar faturas na aba de Cartões de Crédito.</p>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+      st.markdown("---")
+      st.subheader("🧮 Simulador de Empréstimo / Financiamento (Função PMT)")
+      st.write("Simule o impacto de um novo financiamento ou parcelamento no seu fluxo de caixa antes de assumir a obrigação.")
+
+      col_s_pmt1, col_s_pmt2, col_s_pmt3 = st.columns(3)
+      with col_s_pmt1:
+        pv_simulado = st.number_input("Valor do Empréstimo / Dívida (VP - R$)", min_value=0.0, value=10000.0, step=500.0, format="%.2f")
+      with col_s_pmt2:
+        taxa_juros_mes_sim = st.number_input("Taxa de Juros Mensal (% a.m.)", min_value=0.0, max_value=20.0, value=1.5, step=0.1)
+      with col_s_pmt3:
+        nper_simulado = st.number_input("Número de Parcelas (Meses)", min_value=1, max_value=360, value=12, step=1)
+
+      if pv_simulado > 0 and nper_simulado > 0:
+        taxa_decimal = taxa_juros_mes_sim / 100
+        try:
+          pmt_calculado = abs(npf.pmt(taxa_decimal, nper_simulado, -pv_simulado))
+          juros_totais = (pmt_calculado * nper_simulado) - pv_simulado
+        except Exception:
+          pmt_calculado = 0.0
+          juros_totais = 0.0
+
+        col_res1, col_res2 = st.columns(2)
+        with col_res1:
+          st.metric("💳 Valor da Parcela Mensal (PMT)", f"R$ {pmt_calculado:,.2f}")
+        with col_res2:
+          st.metric("💸 Total de Juros Embutidos", f"R$ {juros_totais:,.2f}", delta="Custo Total do Crédito", delta_color="inverse")
+
+        st.info(f"💡 Assumir esta parcela de **R$ {pmt_calculado:,.2f}** compromete aproximadamente **{(pmt_calculado / (abs(media_caixa_periodo) if media_caixa_periodo != 0 else 1) * 100):.1f}%** do seu fluxo líquido médio por período.")
+
+
+# ==================== IA & ASSISTANT (GEMINI API) ====================
+elif aba == "🤖 IA & Assistant":
+  st.title("🤖 Central de Inteligência Artificial & Gemini Assistant")
+  st.write(
+      "Converse diretamente com o **Google Gemini** conectado aos seus dados financeiros reais. "
+      "Faça perguntas complexas, peça conselhos de economia ou diagnósticos detalhados."
+  )
+
+  if st.session_state.lancamentos.empty:
+    st.warning("⚠️ Cadastre alguns lançamentos para que a IA possa analisar e conversar com você sobre os seus dados.")
+  else:
+    df_ia = st.session_state.lancamentos.copy()
+    df_ia["Data"] = pd.to_datetime(df_ia["Data"])
+    if "Status" not in df_ia.columns:
+      df_ia["Status"] = "Efetivado"
+
+    tab_relatorio, tab_chat = st.tabs(["🔮 Relatório Preditivo Avançado", "💬 Chat Inteligente com Gemini"])
+
+    with tab_relatorio:
+      st.subheader("🧠 Diagnóstico Inteligente & Revelações Surpreendentes")
+      st.write("Varredura heurística dos seus dados correntes, identificando padrões invisíveis, riscos e projeções.")
+
+      total_geral_receitas = df_ia[df_ia["Tipo"] == "Receita"]["Valor"].sum()
+      total_geral_despesas = df_ia[df_ia["Tipo"] == "Despesa"]["Valor"].sum()
+      saldo_global = total_geral_receitas - total_geral_despesas
+
+      df_despesas_cat = df_ia[df_ia["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum().reset_index()
+      maior_cat = df_despesas_cat.sort_values(by="Valor", ascending=False).iloc[0]["Categoria"] if not df_despesas_cat.empty else "N/A"
+      maior_val_cat = df_despesas_cat.sort_values(by="Valor", ascending=False).iloc[0]["Valor"] if not df_despesas_cat.empty else 0.0
+      pct_maior_cat = (maior_val_cat / total_geral_despesas * 100) if total_geral_despesas > 0 else 0.0
+
+      col_ia1, col_ia2, col_ia3 = st.columns(3)
+      with col_ia1:
+        st.metric("💰 Saldo Consolidado Global", f"R$ {saldo_global:,.2f}", delta="Receitas - Despesas")
+      with col_ia2:
+        st.metric("🔥 Principal Ralo de Gastos", f"{maior_cat}", delta=f"R$ {maior_val_cat:,.2f}")
+      with col_ia3:
+        st.metric("📊 Concentração da Maior Categoria", f"{pct_maior_cat:.1f}%", delta="Do total de despesas", delta_color="inverse")
+
+      st.markdown("---")
+      st.markdown("### 🔍 Insights & Revelações de Comportamento")
+
+      alerta_concentracao = "⚠️ **Alerta de Alocação Crítica:** " if pct_maior_cat > 40 else "✅ **Alocação Saudável:** "
+      alerta_texto_conc = f"A categoria **{maior_cat}** absorve sozinha **{pct_maior_cat:.1f}%** de todo o seu dinheiro de saída." if pct_maior_cat > 40 else f"Seus gastos estão bem distribuídos, sendo **{maior_cat}** a principal ({pct_maior_cat:.1f}%)."
+      projecao_futura_12m = saldo_global * 1.05
+
+      st.info(
+          f"""
+          * {alerta_concentracao} {alerta_texto_conc}
+          * 🔮 **Projeção de Trajetória Futura:** Mantendo o ritmo atual, a tendência estimada para o próximo ciclo aponta para um fluxo líquido de aproximadamente **R$ {projecao_futura_12m:,.2f}**.
+          * 💡 **Sugestão de Otimização:** Estabeleça tetos orçamentários rígidos por categoria no início de cada mês na aba de Dashboard.
+          """
+      )
+
+      if not df_despesas_cat.empty:
+        fig_pie = px.pie(
+            df_despesas_cat, names="Categoria", values="Valor",
+            title="🎯 Radiografia de Despesas por Categoria para Tomada de Decisão",
+            hole=0.4,
+            color_discrete_sequence=px.colors.sequential.Tealgrn
+        )
+        fig_pie.update_layout(plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)")
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+    with tab_chat:
+      st.subheader("💬 Chat com IA Real (Google Gemini)")
+      st.write("Faça qualquer pergunta sobre os seus gastos, peça dicas de como economizar ou análises detalhadas.")
+
+      gemini_api_key = st.text_input(
+          "🔑 Insira sua Chave de API do Google Gemini (ou configure via st.secrets)",
+          type="password",
+          help="Você pode obter uma chave gratuita no Google AI Studio."
+      )
+
+      if "chat_history_gemini" not in st.session_state:
+        st.session_state.chat_history_gemini = [
+            {"role": "assistant", "content": "Olá, Denison! Estou conectado aos seus dados financeiros através do Google Gemini. O que você gostaria de analisar ou perguntar?"}
+        ]
+
+      for message in st.session_state.chat_history_gemini:
+        with st.chat_message(message["role"]):
+          st.markdown(message["content"])
+
+      user_prompt = st.chat_input("Converse com o Gemini sobre suas finanças...")
+
+      if user_prompt:
+        st.session_state.chat_history_gemini.append({"role": "user", "content": user_prompt})
+        with st.chat_message("user"):
+          st.markdown(user_prompt)
+
+        with st.chat_message("assistant"):
+          with st.spinner("🤖 O Gemini está analisando seus lançamentos e preparando a resposta..."):
+            try:
+              import google.generativeai as genai
+
+              api_key_final = gemini_api_key
+              if not api_key_final and "GEMINI_API_KEY" in st.secrets:
+                api_key_final = st.secrets["GEMINI_API_KEY"]
+
+              if not api_key_final:
+                resposta_gemini = "⚠️ Por favor, insira a sua Chave de API do Google Gemini no campo acima para habilitar o chat inteligente."
+              else:
+                genai.configure(api_key=api_key_final)
+
+                csv_resumido = df_ia.to_csv(index=False)
+
+                prompt_sistema = f"""
+                Você é um consultor financeiro pessoal especialista de elite, integrado a um aplicativo de finanças.
+                Abaixo estão os dados dos lançamentos financeiros do usuário em formato CSV:
+                {csv_resumido}
+
+                Responda à pergunta do usuário de forma analítica, prestativa, clara e em português, baseando-se estritamente nos dados acima.
+                Pergunta do usuário: {user_prompt}
+                """
+
+                model = genai.GenerativeModel('gemini-3.6-flash')
+                response = model.generate_content(prompt_sistema)
+                resposta_gemini = response.text
+
+            except Exception as e:
+              resposta_gemini = f"❌ Erro ao conectar com a API do Gemini: {e}\n\nCertifique-se de que a biblioteca `google-generativeai` está instalada e a chave de API é válida."
+
+            st.markdown(resposta_gemini)
+            st.session_state.chat_history_gemini.append({"role": "assistant", "content": resposta_gemini})
+
+
+# ==================== LANÇAMENTOS (GERENCIAMENTO INTELIGENTE) ====================
+elif aba == "Lançamentos":
+  st.title("📋 Central Inteligente de Lançamentos")
+  st.write(
+      "Consulte, filtre, edite ou exclua seus lançamentos com agilidade e"
+      " precisão."
+  )
+
+  if st.session_state.lancamentos.empty:
+    st.info(
+        "Nenhum lançamento cadastrado até o momento. Vá até a aba 'Cadastro'"
+        " para adicionar registros."
+    )
+  else:
+    df_lanc = st.session_state.lancamentos.copy()
+    df_lanc["Data"] = pd.to_datetime(df_lanc["Data"]).dt.date
+    if "Status" not in df_lanc.columns:
+      df_lanc["Status"] = "Efetivado"
+
+    with st.expander("🔍 Filtros Avançados e Busca Global", expanded=True):
+      col_b1, col_b2 = st.columns([2, 1])
+      with col_b1:
+        busca_texto = st.text_input(
+            "🔎 Busca Rápida (Descrição, Categoria ou Conta)",
+            placeholder="Digite para filtrar instantaneamente...",
+        )
+      with col_b2:
+        tipos_filtro = st.multiselect(
+            "Filtrar por Tipo",
+            ["Receita", "Despesa", "Transferência"],
+            default=["Receita", "Despesa", "Transferência"],
+        )
+
+      col_f1, col_f2, col_f3 = st.columns(3)
+      with col_f1:
+        contas_disp = st.session_state.contas
+        filtro_conta = st.multiselect(
+            "Contas / Origem", contas_disp, default=[]
+        )
+      with col_f2:
+        cat_disp = st.session_state.categorias + ["Transferência"]
+        filtro_cat = st.multiselect("Categorias", cat_disp, default=[])
+      with col_f3:
+        status_disp = ["Efetivado", "Orçado"]
+        filtro_status_lanc = st.multiselect(
+            "Status", status_disp, default=status_disp
+        )
+
+      min_data = df_lanc["Data"].min()
+      max_data = df_lanc["Data"].max()
+      periodo_datas = st.date_input(
+          "Intervalo de Datas",
+          value=(min_data, max_data),
+          min_value=min_data,
+          max_value=max_data,
+      )
+
+    df_filtrado = df_lanc[
+        df_lanc["Tipo"].isin(tipos_filtro)
+        & df_lanc["Status"].isin(filtro_status_lanc)
+    ]
+
+    if busca_texto:
+      termo = busca_texto.lower()
+      df_filtrado = df_filtrado[
+          df_filtrado["Descrição"].str.lower().str.contains(termo, na=False)
+          | df_filtrado["Categoria"].str.lower().str.contains(termo, na=False)
+          | df_filtrado["Conta"].str.lower().str.contains(termo, na=False)
+      ]
+
+    if filtro_conta:
+      df_filtrado = df_filtrado[
+          df_filtrado["Conta"].isin(filtro_conta)
+          | df_filtrado["Conta Destino"].isin(filtro_conta)
+      ]
+
+    if filtro_cat:
+      df_filtrado = df_filtrado[df_filtrado["Categoria"].isin(filtro_cat)]
+
+    if isinstance(periodo_datas, tuple) and len(periodo_datas) == 2:
+      data_inicio, data_fim = periodo_datas
+      df_filtrado = df_filtrado[
+          (df_filtrado["Data"] >= data_inicio)
+          & (df_filtrado["Data"] <= data_fim)
+      ]
+
+    st.markdown("---")
+    m1, m2, m3 = st.columns(3)
+    total_filtrado_val = df_filtrado["Valor"].sum()
+    qtd_registros = len(df_filtrado)
+
+    m1.metric("📊 Registros Encontrados", f"{qtd_registros} itens")
+    m2.metric("💰 Soma dos Valores Exibidos", f"R$ {total_filtrado_val:,.2f}")
+    m3.metric(
+        "📈 Média por Lançamento",
+        (
+            f"R$ {total_filtrado_val / qtd_registros:,.2f}"
+            if qtd_registros > 0
+            else "R$ 0,00"
+        ),
+    )
+    st.markdown("---")
+
+    st.subheader("📑 Registros Correspondentes")
+
+    if df_filtrado.empty:
+      st.warning(
+          "Nenhum lançamento corresponde aos filtros aplicados na busca."
+      )
+    else:
+      df_exibicao = df_filtrado.copy()
+      df_exibicao.index.name = "ID_Original"
+      df_exibicao = df_exibicao.reset_index()
+
+      st.dataframe(
+          df_exibicao,
+          use_container_width=True,
+          hide_index=True,
+          column_config={
+              "ID_Original": st.column_config.NumberColumn(
+                  "ID", help="Identificador único do lançamento"
+              ),
+              "Valor": st.column_config.NumberColumn(
+                  "Valor (R$)", format="R$ %.2f"
+              ),
+              "Data": st.column_config.DateColumn(
+                  "Data", format="DD/MM/YYYY"
+              ),
+          },
+      )
+
+      st.markdown("### ⚡ Ações em Lançamentos")
+      st.caption(
+          "ℹ️ Os budgets automáticos de fatura de cartão ([AUTO]) são recalculados"
+          " sozinhos após editar ou excluir compras."
+      )
+      acao_escolhida = st.radio(
+          "Selecione a Ação desejada",
+          [
+              "Nenhuma",
+              "✏️ Editar Lançamento",
+              "🗑️ Excluir Lançamento Específico",
+              "⚠️ Excluir TODOS os Filtrados",
+          ],
+          horizontal=True,
+      )
+
+      if acao_escolhida == "✏️ Editar Lançamento":
+        st.markdown("#### Editar Registro")
+        indices_disponiveis = df_filtrado.index.tolist()
+        id_para_editar = st.selectbox(
+            "Selecione o ID do lançamento que deseja editar",
+            indices_disponiveis,
+            format_func=lambda x: f"ID {x} - [{st.session_state.lancamentos.loc[x, 'Tipo']}] {st.session_state.lancamentos.loc[x, 'Descrição']} (R$ {st.session_state.lancamentos.loc[x, 'Valor']:,.2f})",
+        )
+
+        if id_para_editar is not None:
+          reg_atual = st.session_state.lancamentos.loc[id_para_editar]
+
+          with st.form("form_edicao_lancamento"):
+            col_e1, col_e2 = st.columns(2)
+            with col_e1:
+              novo_tipo = st.selectbox(
+                  "Tipo",
+                  ["Receita", "Despesa", "Transferência"],
+                  index=["Receita", "Despesa", "Transferência"].index(
+                      reg_atual["Tipo"]
+                  ),
+              )
+              nova_conta = st.selectbox(
+                  "Conta",
+                  st.session_state.contas,
+                  index=(
+                      st.session_state.contas.index(reg_atual["Conta"])
+                      if reg_atual["Conta"] in st.session_state.contas
+                      else 0
+                  ),
+              )
+              nova_categoria = st.selectbox(
+                  "Categoria",
+                  st.session_state.categorias,
+                  index=(
+                      st.session_state.categorias.index(reg_atual["Categoria"])
+                      if reg_atual["Categoria"]
+                      in st.session_state.categorias
+                      else 0
+                  ),
+              )
+            with col_e2:
+              nova_desc = st.text_input(
+                  "Descrição", value=reg_atual["Descrição"]
+              )
+              novo_valor = st.number_input(
+                  "Valor (R$)",
+                  min_value=0.0,
+                  value=float(reg_atual["Valor"]),
+                  step=10.0,
+              )
+              nova_data = st.date_input(
+                  "Data", value=pd.to_datetime(reg_atual["Data"])
+              )
+              status_atual_reg = (
+                  reg_atual["Status"]
+                  if "Status" in reg_atual and pd.notna(reg_atual["Status"])
+                  else "Efetivado"
+              )
+              novo_status = st.selectbox(
+                  "Status",
+                  ["Efetivado", "Orçado"],
+                  index=["Efetivado", "Orçado"].index(status_atual_reg),
+              )
+
+            btn_salvar_edicao = st.form_submit_button(
+                "💾 Salvar Alterações", use_container_width=True
+            )
+            if btn_salvar_edicao:
+              st.session_state.lancamentos.loc[id_para_editar, "Tipo"] = (
+                  novo_tipo
+              )
+              st.session_state.lancamentos.loc[id_para_editar, "Conta"] = (
+                  nova_conta
+              )
+              st.session_state.lancamentos.loc[
+                  id_para_editar, "Categoria"
+              ] = nova_categoria
+              st.session_state.lancamentos.loc[id_para_editar, "Descrição"] = (
+                  nova_desc
+              )
+              st.session_state.lancamentos.loc[id_para_editar, "Valor"] = (
+                  novo_valor
+              )
+              st.session_state.lancamentos.loc[id_para_editar, "Data"] = (
+                  nova_data
+              )
+              st.session_state.lancamentos.loc[id_para_editar, "Status"] = (
+                  novo_status
+              )
+              st.session_state.lancamentos.loc[id_para_editar, "Cenario"] = (
+                  "Budget" if novo_status == "Orçado" else "Efetivado"
+              )
+              sincronizar_budget_cartao()
+              st.success(f"Lançamento ID {id_para_editar} atualizado com sucesso!")
+              st.rerun()
+
+      elif acao_escolhida == "🗑️ Excluir Lançamento Específico":
+        st.markdown("#### Excluir Registro Individual")
+        indices_disponiveis = df_filtrado.index.tolist()
+        id_para_excluir = st.selectbox(
+            "Selecione o ID para excluir",
+            indices_disponiveis,
+            format_func=lambda x: f"ID {x} - [{st.session_state.lancamentos.loc[x, 'Tipo']}] {st.session_state.lancamentos.loc[x, 'Descrição']} (R$ {st.session_state.lancamentos.loc[x, 'Valor']:,.2f})",
+            key="select_excluir_unico",
+        )
+
+        if st.button(
+            "🗑️ Confirmar Exclusão deste Lançamento", type="primary"
+        ):
+          st.session_state.lancamentos = st.session_state.lancamentos.drop(
+              id_para_excluir
+          ).reset_index(drop=True)
+          sincronizar_budget_cartao()
+          st.success(
+              f"Lançamento ID {id_para_excluir} removido com sucesso!"
+          )
+          st.rerun()
+
+      elif acao_escolhida == "⚠️ Excluir TODOS os Filtrados":
+        st.warning(
+            f"Atenção: Você está prestes a excluir todos os {len(df_filtrado)}"
+            " registros exibidos no filtro atual."
+        )
+        confirmacao = st.text_input(
+            "Digite 'EXCLUIR' para confirmar a operação em lote:"
+        )
+        if st.button(
+            "🗑️ Executar Exclusão em Lote", type="primary", use_container_width=True
+        ):
+          if confirmacao == "EXCLUIR":
+            indices_para_remover = df_filtrado.index.tolist()
+            st.session_state.lancamentos = (
+                st.session_state.lancamentos.drop(indices_para_remover)
+                .reset_index(drop=True)
+            )
+            sincronizar_budget_cartao()
+            st.success(
+                f"{len(indices_para_remover)} lançamentos foram excluídos com"
+                " sucesso!"
+            )
+            st.rerun()
+          else:
+            st.error("Confirmação incorreta. Digite 'EXCLUIR' exatamente.")
+
+
+# ==================== CADASTRO (LANÇAMENTOS) ====================
+elif aba == "Cadastro":
+  st.title("💵 Registrar Lançamento")
+
+  col_tipo_cad, col_status_cad = st.columns(2)
+  with col_tipo_cad:
+    tipo = st.selectbox(
+        "Tipo de Lançamento", ["Receita", "Despesa", "Transferência"]
+    )
+  with col_status_cad:
+    status_lancamento = st.selectbox(
+        "Status",
+        ["Efetivado", "Orçado"],
+        help=(
+            "Use 'Orçado' para previsões/planejamento e 'Efetivado' para o que"
+            " já aconteceu."
+        ),
+    )
+
+  st.markdown("---")
+
+  col_origem, col_dest = st.columns(2)
+
+  with col_origem:
+    conta_opcoes = st.session_state.contas + ["+ Adicionar nova conta"]
+    conta_escolha = st.selectbox("Conta Principal / Origem", conta_opcoes)
+
+    if conta_escolha == "+ Adicionar nova conta":
+      nova_conta_input = st.text_input(
+          "Digite o nome da nova conta", key="input_nova_conta"
+      )
+      if nova_conta_input and nova_conta_input not in st.session_state.contas:
+        st.session_state.contas.append(nova_conta_input)
+        conta = nova_conta_input
+      else:
+        conta = ""
+    else:
+      conta = conta_escolha
+
+  conta_destino = "-"
+  if tipo == "Transferência":
+    with col_dest:
+      conta_dest_opcoes = st.session_state.contas + [
+          "+ Adicionar nova conta"
+      ]
+      conta_dest_escolha = st.selectbox(
+          "Conta de Destino", conta_dest_opcoes, key="select_conta_dest"
+      )
+
+      if conta_dest_escolha == "+ Adicionar nova conta":
+        nova_dest_input = st.text_input(
+            "Digite o nome da conta de destino", key="input_nova_dest"
+        )
+        if nova_dest_input and nova_dest_input not in st.session_state.contas:
+          st.session_state.contas.append(nova_dest_input)
+          conta_destino = nova_dest_input
+        else:
+          conta_destino = ""
+      else:
+        conta_destino = conta_dest_escolha
+
+  if tipo != "Transferência":
+    cat_opcoes = st.session_state.categorias + ["+ Adicionar nova categoria"]
+    cat_escolha = st.selectbox("Categoria", cat_opcoes)
+    if cat_escolha == "+ Adicionar nova categoria":
+      nova_cat_input = st.text_input(
+          "Digite o nome da nova categoria", key="input_nova_cat"
+      )
+      if nova_cat_input and nova_cat_input not in st.session_state.categorias:
+        st.session_state.categorias.append(nova_cat_input)
+        categoria = nova_cat_input
+      else:
+        categoria = ""
+    else:
+      categoria = cat_escolha
+  else:
+    categoria = "Transferência"
+
+  st.markdown("---")
+  descricao = st.text_input(
+      "Descrição", placeholder="Ex: Supermercado, Aluguel, Salário..."
+  )
+
+  col_val1, col_val2 = st.columns(2)
+  with col_val1:
+    valor = st.number_input(
+        "Valor Total (R$)", min_value=0.0, step=10.0, format="%.2f"
+    )
+  with col_val2:
+    data = st.date_input("Data do Lançamento / 1ª Parcela")
+
+  parcelas = 1
+  modo_valor = "Integral"
+
+  if tipo in ["Despesa", "Receita"]:
+    with st.expander("⚙️ Opções Avançadas / Parcelamento", expanded=False):
+      col_p1, col_p2 = st.columns(2)
+      with col_p1:
+        parcelas = st.number_input(
+            "Número de Parcelas", min_value=1, max_value=120, value=1, step=1
+        )
+      if parcelas > 1:
+        with col_p2:
+          modo_valor = st.radio(
+              "Modo de cálculo do valor",
+              [
+                  "Dividir (Total ÷ Parcelas)",
+                  "Replicar (Valor integral por parcela)",
+              ],
+          )
+        valor_parcela_calc = (
+            valor / parcelas if "Dividir" in modo_valor else valor
+        )
+        st.info(
+            f"ℹ️ Serão geradas **{parcelas} parcelas** mensais. Valor por"
+            f" parcela: **R$ {valor_parcela_calc:,.2f}**"
+        )
+
+  nomes_cartoes_cad = [c["Nome"] for c in st.session_state.cartoes]
+  if tipo == "Despesa" and status_lancamento == "Efetivado" and conta in nomes_cartoes_cad:
+    st.info(
+        f"💳 '{conta}' é um cartão: o Budget da fatura será criado/atualizado"
+        " automaticamente."
+    )
+
+  st.markdown("")
+
+  if st.button(
+      "💾 Salvar Lançamento", type="primary", use_container_width=True
+  ):
+    erros = []
+    if not descricao:
+      erros.append("A descrição não pode estar vazia.")
+    if valor <= 0:
+      erros.append("O valor deve ser maior que zero.")
+    if not conta:
+      erros.append("Selecione uma conta principal válida.")
+    if tipo == "Transferência" and conta == conta_destino:
+      erros.append(
+          "A conta de origem e destino não podem ser iguais em uma"
+          " transferência."
+      )
+
+    if erros:
+      for erro in erros:
+        st.error(erro)
+    else:
+      cenario_lanc = "Budget" if status_lancamento == "Orçado" else "Efetivado"
+      novos_registros = []
+      for i in range(parcelas):
+        data_parcela = pd.to_datetime(data) + pd.DateOffset(months=i)
+        valor_final = (
+            (valor / parcelas)
+            if (parcelas > 1 and "Dividir" in modo_valor)
+            else valor
+        )
+        desc_formatada = (
+            f"{descricao} ({i+1}/{parcelas})" if parcelas > 1 else descricao
+        )
+        parcela_str = f"{i+1}/{parcelas}" if parcelas > 1 else "Única"
+
+        novos_registros.append([
+            tipo,
+            conta,
+            conta_destino,
+            categoria,
+            desc_formatada,
+            valor_final,
+            data_parcela.date(),
+            parcela_str,
+            modo_valor,
+            status_lancamento,
+            cenario_lanc,
+        ])
+
+      df_novos = pd.DataFrame(novos_registros, columns=COLUNAS_LANC)
+      st.session_state.lancamentos = pd.concat(
+          [st.session_state.lancamentos, df_novos], ignore_index=True
+      )
+
+      # Budget automático da fatura quando a compra é Efetivada no cartão
+      if (
+          tipo == "Despesa"
+          and status_lancamento == "Efetivado"
+          and conta in nomes_cartoes_cad
+      ):
+        sincronizar_budget_cartao(conta)
+      elif (
+          tipo == "Transferência"
+          and status_lancamento == "Efetivado"
+          and conta_destino in nomes_cartoes_cad
+      ):
+        sincronizar_budget_cartao(conta_destino)
+
+      st.success(
+          f"Lançamento(s) salvo(s) com sucesso! ({parcelas} registro(s)"
+          " gerado(s))"
+      )
+
+
+# ==================== CADASTRO DE CATEGORIAS E CONTAS ====================
+elif aba == "Cadastro de Categorias e Contas":
+  st.title("📝 Cadastro Geral")
+  tab_cat, tab_acc = st.tabs(["Categorias", "Contas (Accounts)"])
+
+  with tab_cat:
+    st.subheader("Gerenciar Categorias")
+    nova_cat = st.text_input("Nova Categoria")
+    if st.button("Adicionar Categoria"):
+      if nova_cat and nova_cat not in st.session_state.categorias:
+        st.session_state.categorias.append(nova_cat)
+        st.success(f"Categoria '{nova_cat}' adicionada com sucesso!")
+      else:
+        st.warning("Insira uma categoria válida ou que não exista.")
+    st.write("Categorias atuais:", st.session_state.categorias)
+
+  with tab_acc:
+    st.subheader("Gerenciar Contas")
+    nova_conta = st.text_input("Nova Conta (Account)")
+    if st.button("Adicionar Conta"):
+      if nova_conta and nova_conta not in st.session_state.contas:
+        st.session_state.contas.append(nova_conta)
+        st.success(f"Conta '{nova_conta}' adicionada com sucesso!")
+      else:
+        st.warning("Insira uma conta válida ou que não exista.")
+    st.write("Contas atuais:", st.session_state.contas)
+
+
+# ==================== CARTÕES DE CRÉDITO (COM BUDGET AUTOMÁTICO) ====================
+elif aba == "Cartões de Crédito":
+  st.title("💳 Gestão de Cartões de Crédito")
+  st.write(
+      "Cadastre cartões, lance compras e o sistema cria o Budget da fatura"
+      " automaticamente conforme fechamento e vencimento."
+  )
+
+  tab_gerenciar, tab_compra, tab_faturas = st.tabs(
+      ["📝 Meus Cartões", "🛒 Lançar Compra", "📊 Faturas & Limites"]
+  )
+
+  # ---------- CADASTRO DE CARTÕES ----------
+  with tab_gerenciar:
+    st.subheader("Cadastrar Novo Cartão")
+    with st.form("form_cad_cartao"):
+      col_c1, col_c2 = st.columns(2)
+      with col_c1:
+        nome_cartao = st.text_input(
+            "Nome do Cartão", placeholder="Ex: Visa Platinum, Mastercard..."
+        )
+        limite_cartao = st.number_input(
+            "Limite Total (R$)", min_value=0.0, step=100.0, format="%.2f"
+        )
+      with col_c2:
+        dia_fechamento = st.number_input(
+            "Dia de Fechamento", min_value=1, max_value=31, value=1, step=1
+        )
+        dia_vencimento = st.number_input(
+            "Dia de Vencimento", min_value=1, max_value=31, value=10, step=1
+        )
+      if st.form_submit_button("💾 Salvar Cartão", use_container_width=True):
+        if not nome_cartao:
+          st.error("O nome do cartão não pode estar vazio.")
+        elif limite_cartao <= 0:
+          st.error("O limite deve ser maior que zero.")
+        elif nome_cartao in [c["Nome"] for c in st.session_state.cartoes]:
+          st.warning("Já existe um cartão com esse nome.")
+        else:
+          st.session_state.cartoes.append({
+              "Nome": nome_cartao,
+              "Limite": limite_cartao,
+              "Fechamento": int(dia_fechamento),
+              "Vencimento": int(dia_vencimento),
+          })
+          if nome_cartao not in st.session_state.contas:
+            st.session_state.contas.append(nome_cartao)
+          st.success(f"Cartão '{nome_cartao}' cadastrado!")
+          st.rerun()
+
+    st.markdown("---")
+    st.subheader("Cartões Cadastrados")
+    if st.session_state.cartoes:
+      st.dataframe(
+          pd.DataFrame(st.session_state.cartoes), use_container_width=True
+      )
+    else:
+      st.info("Nenhum cartão cadastrado.")
+
+  # ---------- LANÇAR COMPRA (GERA BUDGET AUTOMÁTICO) ----------
+  with tab_compra:
+    st.subheader("Lançar Compra no Cartão")
+    st.caption(
+        "Compra até o dia do fechamento entra na fatura do mês; depois do"
+        " fechamento, vai para a fatura seguinte. O Budget é criado na data de"
+        " vencimento."
+    )
+    if not st.session_state.cartoes:
+      st.warning("Cadastre um cartão primeiro.")
+    else:
+      with st.form("form_compra_cartao"):
+        c1, c2 = st.columns(2)
+        with c1:
+          cartao_compra = st.selectbox(
+              "Cartão", [c["Nome"] for c in st.session_state.cartoes]
+          )
+          desc_compra = st.text_input("Descrição")
+          cat_compra = st.selectbox("Categoria", st.session_state.categorias)
+        with c2:
+          valor_compra = st.number_input(
+              "Valor Total (R$)", min_value=0.0, step=10.0, format="%.2f"
+          )
+          data_compra = st.date_input("Data da Compra")
+          parcelas_compra = st.number_input(
+              "Parcelas", min_value=1, max_value=60, value=1, step=1
+          )
+        modo_compra = st.radio(
+            "Valor das parcelas",
+            ["Dividir (Total ÷ Parcelas)", "Replicar (Valor integral por parcela)"],
+            horizontal=True,
+        )
+
+        if st.form_submit_button("💾 Salvar Compra", use_container_width=True):
+          if not desc_compra or valor_compra <= 0:
+            st.error("Informe a descrição e um valor maior que zero.")
+          else:
+            cfg = next(
+                c for c in st.session_state.cartoes if c["Nome"] == cartao_compra
+            )
+            linhas = []
+            for i in range(int(parcelas_compra)):
+              dt = pd.to_datetime(data_compra) + pd.DateOffset(months=i)
+              v = (
+                  valor_compra / parcelas_compra
+                  if (parcelas_compra > 1 and "Dividir" in modo_compra)
+                  else valor_compra
+              )
+              linhas.append([
+                  "Despesa",
+                  cartao_compra,
+                  "-",
+                  cat_compra,
+                  f"{desc_compra} ({i+1}/{int(parcelas_compra)})"
+                  if parcelas_compra > 1
+                  else desc_compra,
+                  v,
+                  dt.date(),
+                  f"{i+1}/{int(parcelas_compra)}" if parcelas_compra > 1 else "Única",
+                  "Integral",
+                  "Efetivado",
+                  "Efetivado",
+              ])
+            df_novos = pd.DataFrame(linhas, columns=COLUNAS_LANC)
+            st.session_state.lancamentos = pd.concat(
+                [st.session_state.lancamentos, df_novos], ignore_index=True
+            )
+            sincronizar_budget_cartao(cartao_compra)
+            venc1 = vencimento_da_fatura(
+                data_compra, cfg["Fechamento"], cfg["Vencimento"]
+            )
+            st.success(
+                f"Compra salva! Budget da fatura atualizado. 1ª parcela vence em"
+                f" {venc1.strftime('%d/%m/%Y')}."
+            )
+
+  # ---------- FATURAS & LIMITES ----------
+  with tab_faturas:
+    st.subheader("Faturas e Limites")
+    if not st.session_state.cartoes:
+      st.warning("Cadastre pelo menos um cartão.")
+    else:
+      cartao_sel = st.selectbox(
+          "Selecione o Cartão",
+          [c["Nome"] for c in st.session_state.cartoes],
+          key="select_cartao_detalhe",
+      )
+      dados = next(
+          c for c in st.session_state.cartoes if c["Nome"] == cartao_sel
+      )
+      limite_total = dados["Limite"]
+
+      df_l = st.session_state.lancamentos.copy()
+      if not df_l.empty:
+        df_l["Status"] = df_l["Status"].fillna("Efetivado")
+        df_cartao = df_l[
+            (df_l["Conta"] == cartao_sel) | (df_l["Conta Destino"] == cartao_sel)
+        ]
+        gasto = df_l[
+            (df_l["Conta"] == cartao_sel)
+            & (df_l["Tipo"] == "Despesa")
+            & (df_l["Status"] == "Efetivado")
+            & ~df_l["Descrição"].astype(str).str.startswith(PREFIXO_AUTO)
+        ]["Valor"].sum()
+        pago = df_l[
+            (df_l["Conta Destino"] == cartao_sel)
+            & (df_l["Tipo"] == "Transferência")
+            & (df_l["Status"] == "Efetivado")
+        ]["Valor"].sum()
+        comprometido = gasto - pago
+      else:
+        df_cartao = pd.DataFrame()
+        comprometido = 0.0
+
+      disponivel = limite_total - comprometido
+      m1, m2, m3 = st.columns(3)
+      m1.metric("Limite Total", f"R$ {limite_total:,.2f}")
+      m2.metric(
+          "Comprometido (compras − pagamentos)",
+          f"R$ {comprometido:,.2f}",
+          delta=f"Fecha dia {dados['Fechamento']} | Vence dia {dados['Vencimento']}",
+          delta_color="off",
+      )
+      m3.metric(
+          "Limite Disponível",
+          f"R$ {disponivel:,.2f}",
+          delta="Saudável" if disponivel >= 0 else "Limite ultrapassado!",
+      )
+
+      # Budgets automáticos das faturas
+      st.markdown("---")
+      st.markdown("#### 🗓️ Faturas Previstas (Budget Automático)")
+      if not df_cartao.empty:
+        auto = df_cartao[
+            df_cartao["Descrição"].astype(str).str.startswith(
+                f"{PREFIXO_AUTO}{cartao_sel} |"
+            )
+        ][["Data", "Descrição", "Valor", "Status"]].sort_values("Data")
+        if auto.empty:
+          st.info("Nenhuma fatura prevista ainda.")
+        else:
+          st.dataframe(
+              auto.style.format({"Valor": "R$ {:,.2f}"}),
+              use_container_width=True,
+              hide_index=True,
+          )
+      else:
+        st.info("Nenhuma fatura prevista ainda.")
+      if st.button("🔄 Recalcular Budgets deste Cartão"):
+        sincronizar_budget_cartao(cartao_sel)
+        st.success("Budgets recalculados!")
+        st.rerun()
+
+      # Pagamento de fatura
+      st.markdown("---")
+      st.markdown(f"💳 **Registrar Pagamento de Fatura: {cartao_sel}**")
+      with st.form("form_pagamento_fatura"):
+        p1, p2, p3 = st.columns(3)
+        with p1:
+          origem = st.selectbox(
+              "Conta de Origem",
+              [c for c in st.session_state.contas if c != cartao_sel],
+          )
+        with p2:
+          val_pag = st.number_input(
+              "Valor (R$)", min_value=0.0, step=10.0, format="%.2f"
+          )
+        with p3:
+          data_pag = st.date_input("Data do Pagamento")
+        if st.form_submit_button("✅ Registrar Pagamento", use_container_width=True):
+          if val_pag <= 0:
+            st.error("O valor deve ser maior que zero.")
+          else:
+            novo = pd.DataFrame(
+                [[
+                    "Transferência",
+                    origem,
+                    cartao_sel,
+                    "Pagamento de Fatura",
+                    f"Pagamento Fatura {cartao_sel}",
+                    val_pag,
+                    data_pag,
+                    "Única",
+                    "Integral",
+                    "Efetivado",
+                    "Efetivado",
+                ]],
+                columns=COLUNAS_LANC,
+            )
+            st.session_state.lancamentos = pd.concat(
+                [st.session_state.lancamentos, novo], ignore_index=True
+            )
+            sincronizar_budget_cartao(cartao_sel)
+            st.success(
+                "Pagamento registrado! Faturas quitadas viraram 'Efetivado'"
+                " automaticamente."
+            )
+            st.rerun()
+
+      st.markdown("---")
+      st.markdown(f"### Lançamentos do Cartão: **{cartao_sel}**")
+      if not df_cartao.empty:
+        st.dataframe(df_cartao, use_container_width=True)
+      else:
+        st.info("Nenhum lançamento para este cartão.")
+
+
+# ==================== BACKUP & SEGURANÇA ====================
+elif aba == "Backup & Segurança":
+  st.title("🛡️ Central de Backup e Segurança")
+  st.write(
+      "Gerencie cópias de segurança dos seus dados financeiros com total"
+      " flexibilidade."
+  )
+
+  tab_exp, tab_zip, tab_imp, tab_loc = st.tabs(
+      [
+          "📤 Exportar Dados",
+          "📦 Backup ZIP",
+          "📥 Importar Multi-formato",
+          "💾 Persistência Local",
+      ]
+  )
+
+  with tab_exp:
+    st.subheader("Exportação Rápida")
+    dados_dict = {
+        "lancamentos": st.session_state.lancamentos.to_dict(orient="records"),
+        "categorias": st.session_state.categorias,
+        "contas": st.session_state.contas,
+        "cartoes": st.session_state.cartoes,
+    }
+    json_str = json.dumps(dados_dict, ensure_ascii=False, indent=4, default=str)
+
+    st.download_button(
+        label="📥 Baixar Backup Completo (.json)",
+        data=json_str,
+        file_name="backup_financeiro.json",
+        mime="application/json",
+        use_container_width=True,
+    )
+
+    st.markdown("---")
+    csv_data = st.session_state.lancamentos.to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="📊 Baixar Apenas Lançamentos (.csv)",
+        data=csv_data,
+        file_name="lancamentos.csv",
+        mime="text/csv",
+        use_container_width=True,
+    )
+
+  with tab_zip:
+    st.subheader("Pacote de Segurança Compactado (.zip)")
+    if st.button("📦 Gerar Arquivo ZIP de Backup", use_container_width=True):
+      zip_buffer = io.BytesIO()
+      with zipfile.ZipFile(
+          zip_buffer, "w", zipfile.ZIP_DEFLATED
+      ) as zip_file:
+        zip_file.writestr(
+            "lancamentos.csv",
+            st.session_state.lancamentos.to_csv(index=False).encode("utf-8"),
+        )
+        meta_dict = {
+            "categorias": st.session_state.categorias,
+            "contas": st.session_state.contas,
+            "cartoes": st.session_state.cartoes,
+        }
+        zip_file.writestr(
+            "metadados.json",
+            json.dumps(meta_dict, ensure_ascii=False, indent=4),
+        )
+
+      zip_buffer.seek(0)
+      st.download_button(
+          label="📦 Baixar Pacote ZIP Seguro",
+          data=zip_buffer,
+          file_name="backup_completo_seguro.zip",
+          mime="application/zip",
+          use_container_width=True,
+      )
+      st.success("Pacote ZIP gerado com sucesso!")
+
+  with tab_imp:
+    st.subheader("Importar Dados (ZIP, JSON, CSV ou Excel)")
+    st.write(
+        "Faça upload de arquivos de backup anteriores (incluindo o arquivo"
+        " .zip) para restaurar o seu sistema."
+    )
+
+    arquivo_subido = st.file_uploader(
+        "Escolha o arquivo de backup", type=["zip", "json", "csv", "xlsx", "xls"]
+    )
+
+    if arquivo_subido is not None:
+      extensao = arquivo_subido.name.split(".")[-1].lower()
+
+      try:
+        if extensao == "zip":
+          with zipfile.ZipFile(arquivo_subido, "r") as zip_ref:
+            arquivos_no_zip = zip_ref.namelist()
+
+            if "lancamentos.csv" in arquivos_no_zip:
+              with zip_ref.open("lancamentos.csv") as f:
+                st.session_state.lancamentos = garantir_colunas(pd.read_csv(f))
+
+            if "metadados.json" in arquivos_no_zip:
+              with zip_ref.open("metadados.json") as f:
+                meta_data = json.load(f)
+                if "categorias" in meta_data:
+                  st.session_state.categorias = meta_data["categorias"]
+                if "contas" in meta_data:
+                  st.session_state.contas = meta_data["contas"]
+                if "cartoes" in meta_data:
+                  st.session_state.cartoes = meta_data["cartoes"]
+
+          st.success("Backup ZIP importado e restaurado com sucesso!")
+
+        elif extensao == "json":
+          conteudo = json.load(arquivo_subido)
+          if "lancamentos" in conteudo:
+            st.session_state.lancamentos = garantir_colunas(
+                pd.DataFrame(conteudo["lancamentos"])
+            )
+          if "categorias" in conteudo:
+            st.session_state.categorias = conteudo["categorias"]
+          if "contas" in conteudo:
+            st.session_state.contas = conteudo["contas"]
+          if "cartoes" in conteudo:
+            st.session_state.cartoes = conteudo["cartoes"]
+          st.success("Backup JSON importado e restaurado com sucesso!")
+
+        elif extensao == "csv":
+          df_importado = garantir_colunas(pd.read_csv(arquivo_subido))
+          st.session_state.lancamentos = pd.concat(
+              [st.session_state.lancamentos, df_importado], ignore_index=True
+          )
+          st.success("Lançamentos do CSV adicionados com sucesso!")
+
+        elif extensao in ["xlsx", "xls"]:
+          df_importado = garantir_colunas(pd.read_excel(arquivo_subido))
+          st.session_state.lancamentos = pd.concat(
+              [st.session_state.lancamentos, df_importado], ignore_index=True
+          )
+          st.success("Lançamentos do Excel adicionados com sucesso!")
+
+        st.rerun()
+      except Exception as e:
+        st.error(f"Erro ao processar o arquivo: {e}")
+
+  with tab_loc:
+    st.subheader("Backup Automático no Servidor / Máquina Local")
+    st.write(
+        "Salva o estado atual diretamente em um arquivo fixo (`meu_banco.json`)"
+        " na pasta do sistema."
+    )
+
+    col_l1, col_l2 = st.columns(2)
+
+    with col_l1:
+      if st.button("💾 Salvar no Disco Local", use_container_width=True):
+        dados_locais = {
+            "lancamentos": st.session_state.lancamentos.to_dict(
+                orient="records"
+            ),
+            "categorias": st.session_state.categorias,
+            "contas": st.session_state.contas,
+            "cartoes": st.session_state.cartoes,
+        }
+        with open("meu_banco.json", "w", encoding="utf-8") as f:
+          json.dump(dados_locais, f, ensure_ascii=False, indent=4, default=str)
+        st.success("Dados salvos com sucesso no arquivo 'meu_banco.json'!")
+
+    with col_l2:
+      if st.button("📂 Carregar do Disco Local", use_container_width=True):
+        try:
+          with open("meu_banco.json", "r", encoding="utf-8") as f:
+            dados_locais = json.load(f)
+            st.session_state.lancamentos = garantir_colunas(
+                pd.DataFrame(dados_locais["lancamentos"])
+            )
+            st.session_state.categorias = dados_locais["categorias"]
+            st.session_state.contas = dados_locais["contas"]
+            if "cartoes" in dados_locais:
+              st.session_state.cartoes = dados_locais["cartoes"]
+          st.success("Dados carregados com sucesso do disco local!")
+          st.rerun()
+        except FileNotFoundError:
+          st.warning(
+              "Nenhum arquivo 'meu_banco.json' encontrado. Salve primeiro!"
+          )
+        except Exception as e:
+          st.error(f"Erro ao carregar: {e}")
