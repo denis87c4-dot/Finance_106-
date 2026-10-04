@@ -24,6 +24,7 @@ aba = st.sidebar.radio(
         "KPIs",
         "Dashboard",
         "Statistics",
+        "Statistic2",
         "Financial Analysis",
         "🤖 IA & Assistant",
         "Lançamentos",
@@ -96,6 +97,328 @@ if "cartoes" not in st.session_state:
           "Vencimento": 17,
       },
   ]
+
+# ==================== ABA: STATISTIC2 ====================
+if aba == "Statistic2":
+  st.title("📊 Statistic 2: Indicadores Econométricos & Quantitativos")
+  st.write(
+      "Painel avançado de métricas estatísticas, econométricas e gráficos"
+      " interativos com filtros multidimensionais."
+  )
+
+  df_full = st.session_state.lancamentos.copy()
+
+  if df_full.empty:
+    st.info(
+        "Nenhum lançamento cadastrado ainda. Cadastre transações na aba"
+        " 'Lançamentos' para habilitar as análises estatísticas e gráficos."
+    )
+  else:
+    # Garantir conversões básicas
+    df_full["Valor"] = pd.to_numeric(df_full["Valor"], errors="coerce").fillna(0)
+    df_full["Data"] = pd.to_datetime(df_full["Data"], errors="coerce")
+
+    # Garante colunas de status e cenário caso venham vazias/faltantes
+    if "Status" not in df_full.columns:
+      df_full["Status"] = "Efetivado"
+    if "Cenario" not in df_full.columns:
+      df_full["Cenario"] = "Efetivado"
+
+    # ==================== FILTROS PODEROSOS MULTIDIMENSIONAIS ====================
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🎛️ Filtros Poderosos (Statistic2)")
+
+    # 1. Presets Temporais Rápidos
+    preset_temporal = st.sidebar.selectbox(
+        "Preset Temporal",
+        ["Todo o histórico", "Últimos 30 dias", "Últimos 90 dias", "Ano corrente", "Personalizado"],
+    )
+
+    hoje = pd.Timestamp.today().normalize()
+    if preset_temporal == "Últimos 30 dias":
+      data_inicio = hoje - pd.Timedelta(days=30)
+      data_fim = hoje
+    elif preset_temporal == "Últimos 90 dias":
+      data_inicio = hoje - pd.Timedelta(days=90)
+      data_fim = hoje
+    elif preset_temporal == "Ano corrente":
+      data_inicio = pd.Timestamp(f"{hoje.year}-01-01")
+      data_fim = pd.Timestamp(f"{hoje.year}-12-31")
+    elif preset_temporal == "Personalizado":
+      min_date = df_full["Data"].min() if not df_full["Data"].isna().all() else hoje.date()
+      max_date = df_full["Data"].max() if not df_full["Data"].isna().all() else hoje.date()
+      if pd.isna(min_date):
+        min_date = hoje.date()
+      if pd.isna(max_date):
+        max_date = hoje.date()
+      
+      intervalo_datas = st.sidebar.date_input(
+          "Período",
+          value=(pd.to_datetime(min_date).date(), pd.to_datetime(max_date).date())
+      )
+      if isinstance(intervalo_datas, tuple) and len(intervalo_datas) == 2:
+        data_inicio, data_fim = pd.to_datetime(intervalo_datas[0]), pd.to_datetime(intervalo_datas[1])
+      else:
+        data_inicio, data_fim = pd.to_datetime(min_date), pd.to_datetime(max_date)
+    else:  # Todo o histórico
+      data_inicio = pd.Timestamp("1900-01-01")
+      data_fim = pd.Timestamp("2100-12-31")
+
+    # 2. Multi-seleção: Cenários, Status, Tipos, Contas, Categorias
+    cenarios_disp = df_full["Cenario"].dropna().unique().tolist()
+    cenario_sel = st.sidebar.multiselect("Cenários", options=cenarios_disp, default=cenarios_disp)
+
+    status_disp = df_full["Status"].dropna().unique().tolist()
+    status_sel = st.sidebar.multiselect("Status", options=status_disp, default=status_disp)
+
+    tipos_disp = df_full["Tipo"].dropna().unique().tolist()
+    tipo_sel = st.sidebar.multiselect("Tipos", options=tipos_disp, default=tipos_disp)
+
+    contas_disp = df_full["Conta"].dropna().unique().tolist()
+    conta_sel = st.sidebar.multiselect("Contas / Cartões", options=contas_disp, default=contas_disp)
+
+    categorias_disp = df_full["Categoria"].dropna().unique().tolist()
+    categoria_sel = st.sidebar.multiselect("Categorias", options=categorias_disp, default=categorias_disp)
+
+    # 3. Filtro de Calendário (Todos os dias, Dias Úteis ou Fins de Semana)
+    filtro_dia_util = st.sidebar.selectbox(
+        "Filtro de Calendário",
+        ["Todos os dias", "Dias Úteis (Seg-Sex)", "Fins de Semana (Sáb-Dom)"]
+    )
+
+    # Aplicando os filtros no DataFrame
+    df_f = df_full.copy()
+    if not df_f["Data"].isna().all():
+      df_f = df_f[(df_f["Data"] >= data_inicio) & (df_f["Data"] <= data_fim)]
+    
+    if cenario_sel:
+      df_f = df_f[df_f["Cenario"].isin(cenario_sel)]
+    if status_sel:
+      df_f = df_f[df_f["Status"].isin(status_sel)]
+    if tipo_sel:
+      df_f = df_f[df_f["Tipo"].isin(tipo_sel)]
+    if conta_sel:
+      df_f = df_f[df_f["Conta"].isin(conta_sel)]
+    if categoria_sel:
+      df_f = df_f[df_f["Categoria"].isin(categoria_sel)]
+
+    if filtro_dia_util == "Dias Úteis (Seg-Sex)":
+      df_f = df_f[df_f["Data"].dt.dayofweek < 5]
+    elif filtro_dia_util == "Fins de Semana (Sáb-Dom)":
+      df_f = df_f[df_f["Data"].dt.dayofweek >= 5]
+
+    if df_f.empty:
+      st.warning("Nenhum dado encontrado com os filtros selecionados.")
+    else:
+      despesas_arr = df_f[df_f["Tipo"] == "Despesa"]["Valor"].values
+      total_despesas = despesas_arr[despesas_arr > 0] if len(despesas_arr) > 0 else np.array([0])
+
+      st.markdown("### 📈 16 Indicadores Econométricos & Quantitativos")
+      col1, col2, col3, col4 = st.columns(4)
+
+      with col1:
+        geo_mean = np.exp(np.mean(np.log(total_despesas))) if len(total_despesas) > 0 and np.all(total_despesas > 0) else 0.0
+        st.metric("1. Média Geométrica", f"R$ {geo_mean:,.2f}")
+
+        harm_mean = len(total_despesas) / np.sum(1.0 / total_despesas) if len(total_despesas) > 0 and np.all(total_despesas > 0) else 0.0
+        st.metric("2. Média Harmônica", f"R$ {harm_mean:,.2f}")
+
+        if len(total_despesas) > 5:
+          trimmed = np.sort(total_despesas)
+          trim_cut = int(0.1 * len(trimmed))
+          trimmed_mean = np.mean(trimmed[trim_cut:-trim_cut] if trim_cut > 0 else trimmed)
+        else:
+          trimmed_mean = np.mean(total_despesas) if len(total_despesas) > 0 else 0.0
+        st.metric("3. Média Aparada (10%)", f"R$ {trimmed_mean:,.2f}")
+
+        iqr_val = np.percentile(total_despesas, 75) - np.percentile(total_despesas, 25) if len(total_despesas) > 0 else 0.0
+        st.metric("4. Dispersão IQR", f"R$ {iqr_val:,.2f}")
+
+      with col2:
+        mean_val = np.mean(total_despesas) if len(total_despesas) > 0 else 0
+        negative_diffs = total_despesas[total_despesas < mean_val] - mean_val
+        semi_std = np.sqrt(np.mean(negative_diffs**2)) if len(negative_diffs) > 0 else 0.0
+        st.metric("5. Semi-Desvio Padrão", f"R$ {semi_std:,.2f}")
+
+        std_val = np.std(total_despesas) if len(total_despesas) > 0 else 0
+        cv_val = (std_val / mean_val * 100) if mean_val > 0 else 0.0
+        st.metric("6. Coeficiente de Variação", f"{cv_val:.2f}%")
+
+        sharpe = (mean_val / std_val) if std_val > 0 else 0.0
+        st.metric("7. Índice Sharpe Pessoal", f"{sharpe:.2f}")
+
+        sortino = (mean_val / semi_std) if semi_std > 0 else 0.0
+        st.metric("8. Índice Sortino", f"{sortino:.2f}")
+
+      with col3:
+        var_95 = np.percentile(total_despesas, 95) if len(total_despesas) > 0 else 0.0
+        st.metric("9. Value at Risk (VaR 95%)", f"R$ {var_95:,.2f}")
+
+        cvar_95 = np.mean(total_despesas[total_despesas >= var_95]) if len(total_despesas[total_despesas >= var_95]) > 0 else var_95
+        st.metric("10. CVaR / Expected Shortfall", f"R$ {cvar_95:,.2f}")
+
+        if len(total_despesas) > 0 and np.sum(total_despesas) > 0:
+          sorted_exp = np.sort(total_despesas)
+          n = len(sorted_exp)
+          gini = (2 * np.sum((np.arange(1, n + 1)) * sorted_exp) / (n * np.sum(sorted_exp))) - ((n + 1) / n)
+        else:
+          gini = 0.0
+        st.metric("11. Coeficiente de Gini", f"{gini:.4f}")
+
+        if len(total_despesas) > 0 and np.sum(total_despesas) > 0:
+          proportions = total_despesas / np.sum(total_despesas)
+          shannon = -np.sum(proportions * np.log2(proportions + 1e-12))
+        else:
+          shannon = 0.0
+        st.metric("12. Entropia de Shannon", f"{shannon:.4f} bits")
+
+      with col4:
+        z_score = (mean_val / (std_val + 1e-12)) if std_val > 0 else 0.0
+        st.metric("13. Z-Score de Solvência", f"{z_score:.2f}")
+
+        receitas = df_f[df_f["Tipo"] == "Receita"]["Valor"].sum()
+        despesas_tot = df_f[df_f["Tipo"] == "Despesa"]["Valor"].sum()
+        saving_rate = ((receitas - despesas_tot) / receitas * 100) if receitas > 0 else 0.0
+        st.metric("14. Taxa de Poupança Efetiva", f"{saving_rate:.2f}%")
+
+        net_margin = ((receitas - despesas_tot) / receitas) if receitas > 0 else 0.0
+        st.metric("15. Margem Operacional", f"{net_margin:.2%}")
+
+        cash_coverage = (receitas / (despesas_tot + 1e-12)) if despesas_tot > 0 else 0.0
+        st.metric("16. Cobertura de Caixa", f"{cash_coverage:.2f}x")
+
+      # ==================== PAINEL DE GRÁFICOS INTERATIVOS AVANÇADOS ====================
+      st.markdown("---")
+      st.markdown("### 📊 Painel de Gráficos Interativos Avançados")
+
+      df_sorted = df_f.sort_values("Data") if "Data" in df_f.columns else df_f
+
+      # 1. Bandas de Bollinger & Tendência OLS (Despesas)
+      st.subheader("1. Bandas de Bollinger & Tendência OLS (Despesas)")
+      df_esp = df_sorted[df_sorted["Tipo"] == "Despesa"].groupby("Data")["Valor"].sum().reset_index()
+      if not df_esp.empty and len(df_esp) > 1:
+        df_esp["MA20"] = df_esp["Valor"].rolling(window=min(20, len(df_esp)), min_periods=1).mean()
+        df_esp["STD20"] = df_esp["Valor"].rolling(window=min(20, len(df_esp)), min_periods=1).std().fillna(0)
+        df_esp["Bands_High"] = df_esp["MA20"] + (2 * df_esp["STD20"])
+        df_esp["Bands_Low"] = df_esp["MA20"] - (2 * df_esp["STD20"])
+        
+        # OLS Trendline simples
+        x_vals = np.arange(len(df_esp))
+        y_vals = df_esp["Valor"].values
+        if len(x_vals) > 1:
+          slope, intercept = np.polyfit(x_vals, y_vals, 1)
+          df_esp["OLS_Trend"] = intercept + slope * x_vals
+        else:
+          df_esp["OLS_Trend"] = y_vals
+
+        fig_boll = go.Figure()
+        fig_boll.add_trace(go.Scatter(x=df_esp["Data"], y=df_esp["Bands_High"], name="Banda Superior (+2σ)", line=dict(color="rgba(173,204,255,0.5)", dash="dash")))
+        fig_boll.add_trace(go.Scatter(x=df_esp["Data"], y=df_esp["MA20"], name="Média Móvel (MA)", line=dict(color="blue")))
+        fig_boll.add_trace(go.Scatter(x=df_esp["Data"], y=df_esp["Bands_Low"], name="Banda Inferior (-2σ)", line=dict(color="rgba(173,204,255,0.5)", dash="dash"), fill="tonexty"))
+        fig_boll.add_trace(go.Scatter(x=df_esp["Data"], y=df_esp["Valor"], name="Despesas Diárias", mode="markers+lines", marker=dict(color="red")))
+        fig_boll.add_trace(go.Scatter(x=df_esp["Data"], y=df_esp["OLS_Trend"], name="Tendência OLS", line=dict(color="green", dash="dot")))
+        fig_boll.update_layout(title="Bandas de Bollinger & Regressão Linear OLS", xaxis_title="Data", yaxis_title="Valor (R$)")
+        st.plotly_chart(fig_boll, use_container_width=True)
+      else:
+        st.info("Dados insuficientes para gerar as Bandas de Bollinger.")
+
+      # 2. Histograma Empírico vs Normal Teórica
+      st.subheader("2. Histograma Empírico vs Normal Teórica")
+      if len(total_despesas) > 1:
+        mu, std_n = norm.fit(total_despesas)
+        fig_hist = go.Figure()
+        fig_hist.add_trace(go.Histogram(x=total_despesas, histnorm="probability density", name="Empírico", marker_color="royalblue"))
+        
+        xmin, xmax = min(total_despesas), max(total_despesas)
+        x_axis = np.linspace(xmin, xmax, 100)
+        p = norm.pdf(x_axis, mu, std_n)
+        fig_hist.add_trace(go.Scatter(x=x_axis, y=p, mode="lines", name="Normal Teórica", line=dict(color="crimson", width=3)))
+        fig_hist.update_layout(title="Aderência Gaussiana das Despesas", xaxis_title="Valor", yaxis_title="Densidade")
+        st.plotly_chart(fig_hist, use_container_width=True)
+      else:
+        st.info("Dados insuficientes para o histograma.")
+
+      # 3. Curva de Lorenz & Pareto
+      st.subheader("3. Curva de Lorenz & Pareto")
+      df_cat = df_f[df_f["Tipo"] == "Despesa"].groupby("Categoria")["Valor"].sum().reset_index()
+      if not df_cat.empty and df_cat["Valor"].sum() > 0:
+        df_cat = df_cat.sort_values(by="Valor", ascending=False).reset_index(drop=True)
+        df_cat["Pct"] = df_cat["Valor"] / df_cat["Valor"].sum()
+        df_cat["CumPct"] = df_cat["Pct"].cumsum()
+        df_cat["PopPct"] = (np.arange(len(df_cat)) + 1) / len(df_cat)
+
+        fig_lorenz = go.Figure()
+        fig_lorenz.add_trace(go.Scatter(x=df_cat["PopPct"], y=df_cat["CumPct"], mode="lines+markers", name="Curva de Lorenz", line=dict(color="purple", width=3)))
+        fig_lorenz.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines", name="Linha de Igualdade", line=dict(color="gray", dash="dash")))
+        fig_lorenz.update_layout(title="Concentração de Gastos (Curva de Lorenz)", xaxis_title="Kumulativo de Categorias", yaxis_title="Kumulativo de Gastos")
+        st.plotly_chart(fig_lorenz, use_container_width=True)
+      else:
+        st.info("Sem dados de despesa por categoria para a Curva de Lorenz.")
+
+      # 4. Curva de Drawdown Histórico
+      st.subheader("4. Curva de Drawdown Histórico")
+      df_fluxo = df_sorted.copy()
+      if not df_fluxo.empty:
+        df_fluxo["FluxoDiario"] = df_fluxo.apply(lambda r: r["Valor"] if r["Tipo"] == "Receita" else -r["Valor"], axis=1)
+        df_fluxo = df_fluxo.groupby("Data")["FluxoDiario"].sum().reset_index()
+        df_fluxo["Acumulado"] = df_fluxo["FluxoDiario"].cumsum()
+        df_fluxo["Pico"] = df_fluxo["Acumulado"].cummax()
+        df_fluxo["Drawdown"] = df_fluxo["Acumulado"] - df_fluxo["Pico"]
+
+        fig_dd = px.area(df_fluxo, x="Data", y="Drawdown", title="Drawdown Histórico do Capital Acumulado")
+        fig_dd.update_traces(line_color="red", fillcolor="rgba(255,0,0,0.2)")
+        st.plotly_chart(fig_dd, use_container_width=True)
+      else:
+        st.info("Sem dados para calcular o Drawdown.")
+
+      # 5. Análise ABC de Pareto (Barras + Curva Acumulada)
+      st.subheader("5. Análise ABC de Pareto por Categoria")
+      if not df_cat.empty and df_cat["Valor"].sum() > 0:
+        fig_pareto = go.Figure()
+        fig_pareto.add_trace(go.Bar(x=df_cat["Categoria"], y=df_cat["Valor"], name="Valor por Categoria", marker_color="teal"))
+        fig_pareto.add_trace(go.Scatter(x=df_cat["Categoria"], y=df_cat["CumPct"] * 100, name="% Acumulado", yaxis="y2", mode="lines+markers", line=dict(color="orange", width=2)))
+        fig_pareto.update_layout(
+            title="Matriz ABC de Pareto",
+            xaxis_title="Categoria",
+            yaxis=dict(title="Valor Total (R$)"),
+            yaxis2=dict(title="% Acumulado", overlaying="y", side="right", range=[0, 105])
+        )
+        st.plotly_chart(fig_pareto, use_container_width=True)
+      else:
+        st.info("Sem dados para o gráfico de Pareto.")
+
+      # 6. Dispersão de Transações & Detecção de Outliers
+      st.subheader("6. Dispersão de Transações & Detecção de Outliers")
+      if not df_f.empty:
+        fig_disp = px.scatter(df_f, x="Data", y="Valor", color="Tipo", symbol="Categoria", hover_data=["Descrição", "Conta"], title="Dispersão Temporal de Transações")
+        st.plotly_chart(fig_disp, use_container_width=True)
+
+      # 7. Fluxo Periódico vs Patrimônio Acumulado
+      st.subheader("7. Fluxo Periódico vs Patrimônio Acumulado")
+      if not df_fluxo.empty:
+        fig_pat = go.Figure()
+        fig_pat.add_trace(go.Bar(x=df_fluxo["Data"], y=df_fluxo["FluxoDiario"], name="Fluxo Periódico", marker_color="lightblue"))
+        fig_pat.add_trace(go.Scatter(x=df_fluxo["Data"], y=df_fluxo["Acumulado"], name="Patrimônio Acumulado", yaxis="y2", line=dict(color="darkblue", width=3)))
+        fig_pat.update_layout(
+            title="Evolução do Saldo Líquido e Curva Patrimonial",
+            xaxis_title="Data",
+            yaxis=dict(title="Fluxo Periódico (R$)"),
+            yaxis2=dict(title="Patrimônio Acumulado (R$)", overlaying="y", side="right")
+        )
+        st.plotly_chart(fig_pat, use_container_width=True)
+
+      # 8. Absorção de Liquidez (Entradas vs Saídas)
+      st.subheader("8. Absorção de Liquidez (Entradas vs Saídas)")
+      df_liq = df_sorted.groupby(["Data", "Tipo"])["Valor"].sum().unstack(fill_value=0).reset_index()
+      if "Receita" in df_liq.columns and "Despesa" in df_liq.columns:
+        fig_liq = go.Figure()
+        fig_liq.add_trace(go.Bar(x=df_liq["Data"], y=df_liq["Receita"], name="Entradas", marker_color="green"))
+        fig_liq.add_trace(go.Bar(x=df_liq["Data"], y=-df_liq["Despesa"], name="Saídas", marker_color="crimson"))
+        fig_liq.update_layout(barmode="relative", title="Absorção de Liquidez Diária (Entradas vs Saídas)", xaxis_title="Data", yaxis_title="Volume (R$)")
+        st.plotly_chart(fig_liq, use_container_width=True)
+      else:
+        st.info("Dados insuficientes para a absorção de liquidez.")
+
 
 
 # ==================== FUNÇÕES AUXILIARES: BUDGET AUTOMÁTICO DE CARTÃO ====================
