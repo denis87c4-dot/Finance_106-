@@ -20,6 +20,7 @@ aba = st.sidebar.radio(
     "Navegação",
     [
         "🚀 Advanced Analytics & KPIs",
+        "⚡ Advanced KPIs 2",
         "Sophisticated Graphics",
         "Graphics",
         "KPIs",
@@ -98,6 +99,428 @@ if "cartoes" not in st.session_state:
           "Vencimento": 17,
       },
   ]
+
+# ==================== ABA 1: ADVANCED ANALYTICS & STATISTICAL KPIS ====================
+if aba == "🚀 Advanced Analytics & KPIs":
+  st.title("🚀 Advanced Analytics & Statistical KPIs — Fluxo 106")
+  st.markdown(
+      "Painel executivo de inteligência analítica com filtros dinâmicos,"
+      " estatística robusta, dispersão de cauda, entropia informacional e"
+      " índices de rastreamento."
+  )
+
+  df = st.session_state.lancamentos.copy()
+
+  if df.empty:
+    st.info(
+        "📭 Nenhum lançamento cadastrado ainda. Adicione transações na aba"
+        " **Lançamentos** para popular o painel estatístico avançado."
+    )
+  else:
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔍 Filtros Poderosos (Fluxo 106)")
+
+    tipos_disp = df["Tipo"].dropna().unique().tolist()
+    cats_disp = df["Categoria"].dropna().unique().tolist()
+    contas_disp = df["Conta"].dropna().unique().tolist()
+    cenarios_disp = (
+        df["Cenario"].dropna().unique().tolist()
+        if "Cenario" in df.columns
+        else ["Efetivado"]
+    )
+
+    sel_tipos = st.sidebar.multiselect(
+        "Filtrar por Tipo",
+        options=tipos_disp,
+        default=tipos_disp,
+        key="f_tipo_1",
+    )
+    sel_cats = st.sidebar.multiselect(
+        "Filtrar por Categoria",
+        options=cats_disp,
+        default=cats_disp,
+        key="f_cat_1",
+    )
+    sel_contas = st.sidebar.multiselect(
+        "Filtrar por Conta",
+        options=contas_disp,
+        default=contas_disp,
+        key="f_conta_1",
+    )
+    sel_cenarios = st.sidebar.multiselect(
+        "Filtrar por Cenário",
+        options=cenarios_disp,
+        default=cenarios_disp,
+        key="f_cen_1",
+    )
+
+    df_filtrado = df[
+        df["Tipo"].isin(sel_tipos)
+        & df["Categoria"].isin(sel_cats)
+        & df["Conta"].isin(sel_contas)
+        & df["Cenario"].isin(sel_cenarios)
+    ]
+
+    if df_filtrado.empty:
+      st.warning("⚠️ Nenhum registro encontrado com os filtros selecionados.")
+    else:
+      valores = df_filtrado["Valor"]
+      n_obs = len(valores)
+      media = valores.mean()
+      mediana = valores.median()
+      desvio_padrao = valores.std()
+      cv = (
+          (desvio_padrao / media) * 100
+          if media != 0 and not np.isnan(media)
+          else 0.0
+      )
+      mad = np.median(np.abs(valores - mediana))
+      p95 = np.percentile(valores, 95) if n_obs > 1 else valores.max()
+      skewness = valores.skew() if n_obs > 2 else 0.0
+      kurtosis = valores.kurtosis() if n_obs > 2 else 0.0
+      cat_counts = df_filtrado["Categoria"].value_counts(normalize=True)
+      shannon_entropy = -(cat_counts * np.log2(cat_counts + 1e-9)).sum()
+
+      sorted_vals = np.sort(valores.abs())
+      if n_obs > 0 and sorted_vals.sum() > 0:
+        index = np.arange(1, n_obs + 1)
+        gini = (
+            (2 * np.sum(index * sorted_vals)) / (n_obs * sorted_vals.sum())
+            - (n_obs + 1) / n_obs
+        )
+      else:
+        gini = 0.0
+
+      st.markdown("### 📊 Indicadores de Estatística Robusta e Dispersão")
+      c1, c2, c3, c4 = st.columns(4)
+      c1.metric("Coeficiente de Variação (CV)", f"{cv:.2f}%")
+      c2.metric("Desvio Absoluto Mediano (MAD)", f"R$ {mad:,.2f}")
+      c3.metric("Percentil P95 (Cauda)", f"R$ {p95:,.2f}")
+      c4.metric("Entropia de Shannon", f"{shannon_entropy:.2f} bits")
+
+      c5, c6, c7, c8 = st.columns(4)
+      c5.metric("Assimetria (Skewness)", f"{skewness:.2f}")
+      c6.metric("Curtose", f"{kurtosis:.2f}")
+      c7.metric("Índice Gini", f"{gini:.2f}")
+      c8.metric("Total Filtrado", f"R$ {valores.sum():,.2f}")
+
+      st.markdown("---")
+      g1, g2 = st.columns(2)
+      with g1:
+        st.subheader("📈 Distribuição de Frequência (Histograma)")
+        fig_hist = px.histogram(
+            df_filtrado, x="Valor", nbins=20, color_discrete_sequence=["#2ca02c"]
+        )
+        st.plotly_chart(fig_hist, use_container_width=True)
+      with g2:
+        st.subheader("🎯 Concentração por Categoria (Share)")
+        cat_group = (
+            df_filtrado.groupby("Categoria")["Valor"].sum().reset_index()
+        )
+        fig_pie = px.pie(
+            cat_group, names="Categoria", values="Valor", hole=0.4
+        )
+        st.plotly_chart(fig_pie, use_container_width=True)
+
+
+# ==================== ABA 2: ADVANCED KPIS 2 (STATISTICS + FINANCE) ====================
+elif aba == "⚡ Advanced KPIs 2":
+  st.title("⚡ Advanced KPIs 2: Statistics & Financial Synthesis — Fluxo 106")
+  st.markdown(
+      "Painel de nível executivo com **20 KPIs estatístico-financeiros"
+      " inéditos**, filtros avançados independentes e visualizações gráficas"
+      " dinâmicas."
+  )
+
+  df = st.session_state.lancamentos.copy()
+
+  if df.empty:
+    st.info(
+        "📭 Nenhum lançamento cadastrado. Adicione transações na aba"
+        " **Lançamentos** para popular o painel."
+    )
+  else:
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+
+    # Filtros Poderosos Deduzidos para a Aba 2
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔍 Filtros Poderosos (Advanced KPIs 2)")
+
+    tipos_disp2 = df["Tipo"].dropna().unique().tolist()
+    cats_disp2 = df["Categoria"].dropna().unique().tolist()
+    contas_disp2 = df["Conta"].dropna().unique().tolist()
+    cenarios_disp2 = (
+        df["Cenario"].dropna().unique().tolist()
+        if "Cenario" in df.columns
+        else ["Efetivado"]
+    )
+
+    sel_t2 = st.sidebar.multiselect(
+        "Tipo (KPIs 2)",
+        options=tipos_disp2,
+        default=tipos_disp2,
+        key="f_tipo_2",
+    )
+    sel_c2 = st.sidebar.multiselect(
+        "Categoria (KPIs 2)",
+        options=cats_disp2,
+        default=cats_disp2,
+        key="f_cat_2",
+    )
+    sel_co2 = st.sidebar.multiselect(
+        "Conta (KPIs 2)",
+        options=contas_disp2,
+        default=contas_disp2,
+        key="f_conta_2",
+    )
+    sel_ce2 = st.sidebar.multiselect(
+        "Cenário (KPIs 2)",
+        options=cenarios_disp2,
+        default=cenarios_disp2,
+        key="f_cen_2",
+    )
+
+    df_f2 = df[
+        df["Tipo"].isin(sel_t2)
+        & df["Categoria"].isin(sel_c2)
+        & df["Conta"].isin(sel_co2)
+        & df["Cenario"].isin(sel_ce2)
+    ]
+
+    if df_f2.empty:
+      st.warning("⚠️ Nenhum registro encontrado para os filtros aplicados.")
+    else:
+      vals = df_f2["Valor"]
+      receitas = df_f2[df_f2["Tipo"].str.lower().str.contains("receita|entrada", na=False)]["Valor"].sum()
+      despesas = abs(df_f2[df_f2["Tipo"].str.lower().str.contains("despesa|saída", na=False)]["Valor"].sum())
+      if despesas == 0:
+        despesas = abs(vals[vals < 0].sum())
+      if receitas == 0:
+        receitas = vals[vals > 0].sum()
+
+      # ==================== CÁLCULO DOS 20 KPIS INÉDITOS ====================
+      # 1. VaR Histórico (95%)
+      var_hist = np.percentile(vals, 5) if len(vals) > 1 else vals.min()
+      # 2. Expected Shortfall (CVaR)
+      cvar = vals[vals <= var_hist].mean() if len(vals[vals <= var_hist]) > 0 else var_hist
+      # 3. Índice de Cobertura de Despesas (ICD)
+      icd = (receitas / despesas) if despesas > 0 else 0.0
+      # 4. Burn Rate Volatility (Desvio padrão móvel / desvio padrão global)
+      burn_vol = vals.std() / (abs(vals.mean()) + 1e-9)
+      # 5. Índice de Concentração de Gasto de Cauda (Top 10% Share)
+      top_10_val = np.percentile(vals.abs(), 90) if len(vals) > 1 else vals.abs().max()
+      top10_share = (vals.abs()[vals.abs() >= top_10_val].sum() / (vals.abs().sum() + 1e-9)) * 100
+      # 6. Fator de Resiliência de Caixa (Median / Mean ratio)
+      resilience_factor = (vals.median() / (vals.mean() + 1e-9))
+      # 7. Coeficiente de Risco de Impacto (Skewness * Desvio Padrão)
+      risk_impact_coef = vals.skew() * vals.std() if len(vals) > 2 else 0.0
+      # 8. Índice de Estabilidade de Frequência Temporal (Dias únicos transacionados vs total dias)
+      if "Data" in df_f2.columns and not df_f2["Data"].isna().all():
+        total_dias_intervalo = max(1, (df_f2["Data"].max() - df_f2["Data"].min()).days + 1)
+        dias_com_transacao = df_f2["Data"].nunique()
+        freq_stability = (dias_com_transacao / total_dias_intervalo) * 100
+      else:
+        freq_stability = 100.0
+      # 9. Índice de Amplitude Relativa (IQR / Média)
+      q75, q25 = np.percentile(vals, [75, 25]) if len(vals) > 1 else (vals.max(), vals.min())
+      iqr = q75 - q25
+      rel_iqr = (iqr / (abs(vals.mean()) + 1e-9)) * 100
+      # 10. Taxa de Variação de Cauda Esquerda (Tail Ratio)
+      p95_val = np.percentile(vals.abs(), 95) if len(vals) > 1 else vals.abs().max()
+      p05_val = np.percentile(vals.abs(), 5) if len(vals) > 1 else vals.abs().min()
+      tail_ratio = (p95_val / (p05_val + 1e-9))
+      # 11. Índice de Dispersão Exponencial (Var / Mean)
+      disp_exp = (vals.var() / (abs(vals.mean()) + 1e-9)) if vals.mean() != 0 else 0.0
+      # 12. Índice de Elasticidade de Categoria (Desvio padrão das categorias / Média global)
+      cat_std = df_f2.groupby("Categoria")["Valor"].sum().std() if len(df_f2["Categoria"].unique()) > 1 else 0.0
+      cat_elasticity = cat_std / (abs(vals.mean()) + 1e-9)
+      # 13. Índice de Eficiência de Fluxo Líquido (Net Flow / Gross Total Volume)
+      gross_vol = vals.abs().sum()
+      net_flow_eff = (vals.sum() / (gross_vol + 1e-9)) * 100
+      # 14. Índice de Inércia de Transação (Autocorrelação Lag-1 aproximada)
+      if len(vals) > 2:
+        val_shifted = vals.shift(1).fillna(vals.mean())
+        autocorr = np.corrcoef(vals, val_shifted)[0, 1]
+        if np.isnan(autocorr):
+          autocorr = 0.0
+      else:
+        autocorr = 0.0
+      # 15. Índice de Z-Score Máximo Absoluto (Outlier severity)
+      if vals.std() > 0:
+        max_z = np.max(np.abs((vals - vals.mean()) / vals.std()))
+      else:
+        max_z = 0.0
+      # 16. Índice de Concentração de Contas (HHI de Contas)
+      conta_shares = df_f2.groupby("Conta")["Valor"].sum().abs() / (vals.abs().sum() + 1e-9)
+      conta_hhi = (conta_shares ** 2).sum() * 100
+      # 17. Fator de Assimetria de Fluxo (Receitas vs Despesas proporção estatística)
+      flow_skew_factor = (receitas / (despesas + 1e-9)) * (1 + abs(vals.skew()))
+      # 18. Média Geométrica Ajustada de Valores Positivos
+      pos_vals = vals[vals > 0]
+      if len(pos_vals) > 0:
+        geom_mean = np.exp(np.log(pos_vals).mean())
+      else:
+        geom_mean = 0.0
+      # 19. Índice de Volatilidade Ponderada por Volume (VWCV)
+      vwcv = (vals.std() * vals.abs().sum()) / (vals.mean() ** 2 + 1e-9) if vals.mean() != 0 else 0.0
+      # 20. Índice de Estresse Sintético (Synthetic Stress Indicator)
+      synth_stress = abs(var_hist) * (1 + burn_vol) / (icd + 0.1)
+
+      # ==================== EXIBIÇÃO EM BLOCOS DE CARDS ====================
+      st.markdown("### 🏆 Bloco 1: Gestão de Risco e Cauda Estatística")
+      k1, k2, k3, k4, k5 = st.columns(5)
+      k1.metric("1. VaR Histórico (95%)", f"R$ {var_hist:,.2f}", help="Pior cenário esperado em 95% dos lançamentos.")
+      k2.metric("2. Expected Shortfall (CVaR)", f"R$ {cvar:,.2f}", help="Média dos impactos nos 5% piores cenários de cauda.")
+      k3.metric("3. Índice Cobertura (ICD)", f"{icd:.2f}x", help="Razão entre receitas e despesas filtradas.")
+      k4.metric("4. Volatilidade de Burn Rate", f"{burn_vol:.2f}", help="Relação entre desvio padrão e média absoluta.")
+      k5.metric("5. Share Top 10% Cauda", f"{top10_share:.1f}%", help="Percentual do volume total concentrado nos 10% maiores valores.")
+
+      st.markdown("### 📊 Bloco 2: Estrutura, Resiliência e Dinâmica de Fluxo")
+      k6, k7, k8, k9, k10 = st.columns(5)
+      k6.metric("6. Fator de Resiliência", f"{resilience_factor:.2f}", help="Proporção entre Mediana e Média dos lançamentos.")
+      k7.metric("7. Coeficiente Risco-Impacto", f"{risk_impact_coef:,.2f}", help="Cruzamento entre assimetria e volatilidade.")
+      k8.metric("8. Estabilidade de Frequência", f"{freq_stability:.1f}%", help="Percentual de dias com movimentação no intervalo.")
+      k9.metric("9. Amplitude Relativa (IQR)", f"{rel_iqr:.1f}%", help="Dispersão interquartil normalizada pela média.")
+      k10.metric("10. Razão de Cauda (Tail Ratio)", f"{tail_ratio:.2f}", help="Relação entre o percentil 95 e o percentil 5 absoluto.")
+
+      st.markdown("### ⚙️ Bloco 3: Dispersão, Inércia e Concentração Sistêmica")
+      k11, k12, k13, k14, k15 = st.columns(5)
+      k11.metric("11. Dispersão Exponencial", f"{disp_exp:,.2f}", help="Variância dividida pela média absoluta.")
+      k12.metric("12. Elasticidade por Categoria", f"{cat_elasticity:.2f}", help="Volatilidade entre as diferentes categorias de fluxo.")
+      k13.metric("13. Eficiência de Fluxo Líquido", f"{net_flow_eff:.1f}%", help="Saldo líquido dividido pelo volume bruto movimentado.")
+      k14.metric("14. Inércia de Transação (Lag-1)", f"{autocorr:.2f}", help="Grau de correlação sequencial entre lançamentos.")
+      k15.metric("15. Z-Score Máximo (Outlier)", f"{max_z:.2f}", help="Severidade do maior ponto fora da curva estatística.")
+
+      st.markdown("### 💎 Bloco 4: Concentração, Geometria e Estresse de Caixa")
+      k16, k17, k18, k19, k20 = st.columns(5)
+      k16.metric("16. Concentração de Contas (HHI)", f"{conta_hhi:.1f}%", help="Índice Herfindahl-Hirschman de concentração por conta.")
+      k17.metric("17. Fator de Assimetria de Fluxo", f"{flow_skew_factor:.2f}", help="Proporção de receitas/despesas ponderada pela assimetria.")
+      k18.metric("18. Média Geométrica Positiva", f"R$ {geom_mean:,.2f}", help="Média geométrica dos valores estritamente positivos.")
+      k19.metric("19. Volatilidade Ponderada (VWCV)", f"{vwcv:,.2f}", help="Volatilidade ajustada pelo volume financeiro total.")
+      k20.metric("20. Indicador de Estresse Sintético", f"{synth_stress:,.2f}", help="Métrica combinada de risco de cauda e cobertura.")
+
+      # ==================== GRÁFICOS DINÂMICOS DA ABA 2 ====================
+      st.markdown("---")
+      st.subheader("📈 Análises Gráficas Avançadas — Advanced KPIs 2")
+      
+      gc1, gc2 = st.columns(2)
+
+      with gc1:
+        st.markdown("**Evolução Temporal do VaR e Valores Registrados**")
+        if "Data" in df_f2.columns and not df_f2["Data"].isna().all():
+          df_time_agg = df_f2.groupby(df_f2["Data"].dt.date)["Valor"].sum().reset_index()
+          fig_line = px.line(
+              df_time_agg,
+              x="Data",
+              y="Valor",
+              title="Série Temporal Diária de Fluxo Líquido",
+              markers=True,
+              color_discrete_sequence=["#1f77b4"],
+          )
+          st.plotly_chart(fig_line, use_container_width=True)
+        else:
+          st.info("Necessário dados de data válidos para gerar o gráfico temporal.")
+
+      with gc2:
+        st.markdown("**Concentração de Volume por Conta (HHI Breakdown)**")
+        conta_group = df_f2.groupby("Conta")["Valor"].sum().reset_index()
+        fig_bar = px.bar(
+            conta_group,
+            x="Conta",
+            y="Valor",
+            title="Volume Consolidado por Conta Bancária",
+            color="Conta",
+            text_auto=True,
+        )
+        st.plotly_chart(fig_bar, use_container_width=True)
+
+
+# ==================== RESTANTE DAS ABAS ORIGINAIS DO SEU APP ====================
+elif aba == "Sophisticated Graphics":
+  st.title("Sophisticated Graphics")
+  st.info("Abra o menu lateral para navegar ou adicionar gráficos sofisticados.")
+
+elif aba == "Graphics":
+  st.title("Graphics")
+  st.info("Painel gráfico padrão.")
+
+elif aba == "KPIs":
+  st.title("KPIs")
+  st.info("Painel de KPIs tradicionais.")
+
+elif aba == "Dashboard":
+  st.title("Dashboard")
+  st.info("Dashboard executivo geral.")
+
+elif aba == "Statistics":
+  st.title("Statistics")
+  st.info("Estatísticas básicas do sistema.")
+
+elif aba == "Statistic2":
+  st.title("Statistic2")
+  st.info("Estatísticas complementares.")
+
+elif aba == "Financial Analysis":
+  st.title("Financial Analysis")
+  st.info("Análise financeira detalhada.")
+
+elif aba == "🤖 IA & Assistant":
+  st.title("🤖 IA & Assistant")
+  st.info("Assistente inteligente.")
+
+elif aba == "Lançamentos":
+  st.title("Lançamentos")
+  st.markdown("Gerencie seus lançamentos financeiros aqui.")
+  
+  # Formulário rápido para testes e população do app
+  with st.form("form_lanc"):
+    col_a, col_b, col_c = st.columns(3)
+    t_tipo = col_a.selectbox("Tipo", ["Receita", "Despesa"])
+    t_conta = col_b.selectbox("Conta", st.session_state.contas)
+    t_cat = col_c.selectbox("Categoria", st.session_state.categorias)
+    
+    col_d, col_e, col_f = st.columns(3)
+    t_desc = col_d.text_input("Descrição", "Ex: Supermercado")
+    t_val = col_e.number_input("Valor", value=150.0, format="%.2f")
+    t_data = col_f.date_input("Data")
+    
+    submitted = st.form_submit_button("Adicionar Lançamento")
+    if submitted:
+      novo_reg = pd.DataFrame([{
+          "Tipo": t_tipo,
+          "Conta": t_conta,
+          "Conta Destino": "",
+          "Categoria": t_cat,
+          "Descrição": t_desc,
+          "Valor": t_val if t_tipo == "Receita" else -abs(t_val),
+          "Data": pd.to_datetime(t_data),
+          "Parcelas": "1/1",
+          "Modo Valor": "À vista",
+          "Status": "Efetivado",
+          "Cenario": "Efetivado"
+      }])
+      st.session_state.lancamentos = pd.concat([st.session_state.lancamentos, novo_reg], ignore_index=True)
+      st.success("Lançamento adicionado com sucesso! Navegue para as abas de KPIs para visualizar.")
+
+  if not st.session_state.lancamentos.empty:
+    st.dataframe(st.session_state.lancamentos, use_container_width=True)
+
+elif aba == "Cadastro":
+  st.title("Cadastro")
+
+elif aba == "Cadastro de Categorias e Contas":
+  st.title("Cadastro de Categorias e Contas")
+
+elif aba == "Cartões de Crédito":
+  st.title("Cartões de Crédito")
+
+elif aba == "Backup & Segurança":
+  st.title("Backup & Segurança")
+
 
 # ==================== ABA 1: ADVANCED ANALYTICS & STATISTICAL KPIS ====================
 if aba == "🚀 Advanced Analytics & KPIs":
