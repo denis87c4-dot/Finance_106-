@@ -19,6 +19,7 @@ st.set_page_config(
 aba = st.sidebar.radio(
     "Navegação",
     [
+        "🔍 Auditoria Avançada",
         "🚀 Advanced Analytics & KPIs",
         "⚡ Advanced KPIs 2",
         "Sophisticated Graphics",
@@ -99,6 +100,208 @@ if "cartoes" not in st.session_state:
           "Vencimento": 17,
       },
   ]
+
+# ==================== ABA: AUDITORIA AVANÇADA ====================
+if aba == "🔍 Auditoria Avançada":
+  st.title("🔍 Auditoria e Conformidade Financeira")
+  st.markdown(
+      "Painel de controle analítico para verificação de consistência,"
+      " rastreabilidade de lançamentos e detecção de anomalias."
+  )
+
+  df_audit = st.session_state.lancamentos.copy()
+
+  if df_audit.empty:
+    st.info(
+        "Nenhum lançamento cadastrado ainda para auditoria. Utilize a aba"
+        " 'Lançamentos' para popular a base de dados."
+    )
+  else:
+    # Conversão de datas para filtros temporais seguros
+    df_audit["Data"] = pd.to_datetime(df_audit["Data"], errors="coerce")
+    df_audit["Valor"] = pd.to_numeric(df_audit["Valor"], errors="fillna").fillna(
+        0.0
+    )
+
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🎛️ Filtros de Auditoria")
+
+    # Filtro de Período
+    min_date = (
+        df_audit["Data"].min().date()
+        if not df_audit["Data"].isna().all()
+        else pd.Timestamp.today().date()
+    )
+    max_date = (
+        df_audit["Data"].max().date()
+        if not df_audit["Data"].isna().all()
+        else pd.Timestamp.today().date()
+    )
+
+    filtro_periodo = st.sidebar.date_input(
+        "Período de Análise",
+        value=(min_date, max_date),
+        min_value=min_date,
+        max_value=max_date,
+    )
+
+    # Filtros Avançados
+    status_opcoes = (
+        df_audit["Status"].dropna().unique().tolist()
+        if "Status" in df_audit.columns
+        else []
+    )
+    cenario_opcoes = (
+        df_audit["Cenario"].dropna().unique().tolist()
+        if "Cenario" in df_audit.columns
+        else []
+    )
+    tipo_opcoes = df_audit["Tipo"].dropna().unique().tolist()
+    cat_opcoes = df_audit["Categoria"].dropna().unique().tolist()
+
+    sel_status = st.sidebar.multiselect(
+        "Filtrar por Status",
+        options=status_opcoes,
+        default=status_opcoes,
+    )
+    sel_cenario = st.sidebar.multiselect(
+        "Filtrar por Cenário",
+        options=cenario_opcoes,
+        default=cenario_opcoes,
+    )
+    sel_tipo = st.sidebar.multiselect(
+        "Filtrar por Tipo", options=tipo_opcoes, default=tipo_opcoes
+    )
+    sel_cat = st.sidebar.multiselect(
+        "Filtrar por Categoria", options=cat_opcoes, default=cat_opcoes
+    )
+
+    # Aplicação dos Filtros
+    mask = pd.Series(True, index=df_audit.index)
+    if len(filtro_periodo) == 2:
+      start_d, end_d = filtro_periodo
+      mask &= df_audit["Data"].dt.date.between(start_d, end_d)
+
+    if sel_status and "Status" in df_audit.columns:
+      mask &= df_audit["Status"].isin(sel_status)
+    if sel_cenario and "Cenario" in df_audit.columns:
+      mask &= df_audit["Cenario"].isin(sel_cenario)
+    if sel_tipo:
+      mask &= df_audit["Tipo"].isin(sel_tipo)
+    if sel_cat:
+      mask &= df_audit["Categoria"].isin(sel_cat)
+
+    df_filtrado = df_audit[mask]
+
+    # --- CARDS DE RESUMO EXECUTIVO ---
+    col1, col2, col3, col4, col5 = st.columns(5)
+
+    total_registros = len(df_filtrado)
+    receitas = df_filtrado.loc[
+        df_filtrado["Tipo"].str.lower().str.contains("receita", na=False),
+        "Valor",
+    ].sum()
+    despesas = df_filtrado.loc[
+        df_filtrado["Tipo"].str.lower().str.contains("despesa", na=False),
+        "Valor",
+    ].sum()
+    saldo_liq = receitas - despesas
+    ticket_medio = df_filtrado["Valor"].mean() if total_registros > 0 else 0
+
+    col1.metric("Total Registros", f"{total_registros:,}")
+    col2.metric("Receitas Filtradas", f"R$ {receitas:,.2f}")
+    col3.metric("Despesas Filtradas", f"R$ {despesas:,.2f}")
+    col4.metric("Saldo Líquido", f"R$ {saldo_liq:,.2f}")
+    col5.metric("Ticket Médio", f"R$ {ticket_medio:,.2f}")
+
+    st.markdown("---")
+
+    # --- SEÇÃO DE ANOMALIAS E ALERTAS ---
+    st.subheader("🚨 Painel de Exceções & Alertas de Auditoria")
+
+    c_alerta1, c_alerta2 = st.columns(2)
+
+    with c_alerta1:
+      st.markdown("##### ⚠️ Lançamentos com Valores Atípicos (Outliers)")
+      if not df_filtrado.empty and df_filtrado["Valor"].std() > 0:
+        media_val = df_filtrado["Valor"].mean()
+        desvio_val = df_filtrado["Valor"].std()
+        limite_outlier = media_val + (2 * desvio_val)
+        outliers = df_filtrado[df_filtrado["Valor"] > limite_outlier]
+
+        if not outliers.empty:
+          st.warning(
+              f"Encontrados {len(outliers)} lançamentos acima de 2 desvios"
+              " padrão da média."
+          )
+          st.dataframe(
+              outliers[["Data", "Descrição", "Categoria", "Valor"]],
+              use_container_width=True,
+          )
+        else:
+          st.success(
+              "Nenhum valor discrepante detectado para o filtro atual."
+          )
+      else:
+        st.info("Dados insuficientes para cálculo de desvio padrão.")
+
+    with c_alerta2:
+      st.markdown("##### ⏳ Pendências e Status Críticos")
+      if "Status" in df_filtrado.columns:
+        pendentes = df_filtrado[
+            df_filtrado["Status"].str.lower().str.contains(
+                "pendente|aberto", na=False
+            )
+        ]
+        if not pendentes.empty:
+          st.error(
+              f"Atenção: Há {len(pendentes)} registros com status pendente no"
+              " período."
+          )
+          st.dataframe(
+              pendentes[["Data", "Descrição", "Status", "Valor"]],
+              use_container_width=True,
+          )
+        else:
+          st.success("Todos os lançamentos do período estão efetivados.")
+      else:
+        st.info("Coluna 'Status' não encontrada na base.")
+
+    st.markdown("---")
+
+    # --- ANÁLISE GRÁFICA DE CONFORMIDADE ---
+    st.subheader("📊 Distribuição Analítica para Conferência")
+    g_col1, g_col2 = st.columns(2)
+
+    with g_col1:
+      if not df_filtrado.empty:
+        fig_cat = px.pie(
+            df_filtrado,
+            names="Categoria",
+            values="Valor",
+            title="Volume Financeiro por Categoria",
+            hole=0.4,
+        )
+        st.plotly_chart(fig_cat, use_container_width=True)
+
+    with g_col2:
+      if not df_filtrado.empty and "Conta" in df_filtrado.columns:
+        fig_conta = px.bar(
+            df_filtrado.groupby("Conta")["Valor"]
+            .sum()
+            .reset_index(),
+            x="Conta",
+            y="Valor",
+            title="Movimentação por Conta",
+            text_auto=".2f",
+            color="Conta",
+        )
+        st.plotly_chart(fig_conta, use_container_width=True)
+
+    # --- TABELA DETALHADA DE AUDITORIA ---
+    st.subheader("📋 Base Consolidada Filtrada")
+    st.dataframe(df_filtrado, use_container_width=True)
+
 
 # ==================== ABA 1: ADVANCED ANALYTICS & STATISTICAL KPIS ====================
 if aba == "🚀 Advanced Analytics & KPIs":
