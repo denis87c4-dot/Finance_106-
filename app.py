@@ -1,4 +1,4 @@
-import calendar
+ import calendar
 import io
 import json
 import zipfile
@@ -153,6 +153,17 @@ if aba == "📊 Regressão Avançada":
         "Filtrar por Categoria", cat_disp, default=cat_disp
     )
 
+    # Filtro adicional de Cenário/Status caso exista no dataset
+    if "Cenario" in df.columns:
+      cenarios_disp = df["Cenario"].dropna().unique().tolist()
+      filtro_cenario_reg = st.sidebar.multiselect(
+          "Filtrar por Cenário / Orçamento",
+          cenarios_disp,
+          default=cenarios_disp,
+      )
+    else:
+      filtro_cenario_reg = None
+
     # Aplicação dos filtros
     df_f = df[
         (df["Tipo"].isin(filtro_tipo))
@@ -161,13 +172,16 @@ if aba == "📊 Regressão Avançada":
         & (df["Data"].dt.date <= filtro_periodo[1])
     ]
 
+    if filtro_cenario_reg and "Cenario" in df_f.columns:
+      df_f = df_f[df_f["Cenario"].isin(filtro_cenario_reg)]
+
     if df_f.empty:
       st.warning(
           "Nenhum registro encontrado com os filtros selecionados na barra"
           " lateral."
       )
     else:
-      # Agrupamento diário/mensal para regressão
+      # Agrupamento temporal para regressão
       df_f["MesAno"] = df_f["Data"].dt.to_period("M").dt.to_timestamp()
       df_reg = (
           df_f.groupby(["MesAno", "Tipo"])["Valor"].sum().reset_index()
@@ -176,17 +190,54 @@ if aba == "📊 Regressão Avançada":
       col1, col2 = st.columns(2)
 
       with col1:
-        st.subheader("Tendência Temporal com Regressão Linear")
-        fig_reg = px.scatter(
-            df_reg,
-            x="MesAno",
-            y="Valor",
-            color="Tipo",
-            trendline="ols",
-            title="Evolução Histórica e Linha de Tendência (OLS)",
-            labels={"MesAno": "Mês/Ano", "Valor": "Valor (R$)"},
-        )
-        st.plotly_chart(fig_reg, use_container_width=True)
+        st.subheader("Tendência Temporal (Regressão Robusta)")
+        if len(df_reg) < 2:
+          st.info(
+              "Poucos pontos temporais disponíveis. Cadastre dados em mais de"
+              " um mês para traçar a linha de tendência estatística."
+          )
+          fig_reg = px.bar(
+              df_reg,
+              x="MesAno",
+              y="Valor",
+              color="Tipo",
+              title="Evolução Histórica por Período",
+          )
+          st.plotly_chart(fig_reg, use_container_width=True)
+        else:
+          # Usamos Scatter puro sem o trendline='ols' interno do Plotly para evitar falhas com datasets de orçamento esparsos
+          fig_reg = px.scatter(
+              df_reg,
+              x="MesAno",
+              y="Valor",
+              color="Tipo",
+              title="Evolução Histórica e Tendência OLS",
+              labels={"MesAno": "Mês/Ano", "Valor": "Valor (R$)"},
+          )
+          # Adição manual de linha de tendência segura via numpy para evitar quebra do Statsmodels
+          try:
+            for tipo_val in df_reg["Tipo"].unique():
+              sub_df = df_reg[df_reg["Tipo"] == tipo_val].sort_values(
+                  "MesAno"
+              )
+              if len(sub_df) >= 2:
+                x_num = np.arange(len(sub_df))
+                y_vals = sub_df["Valor"].values
+                slope, intercept = np.polyfit(x_num, y_vals, 1)
+                trend_vals = slope * x_num + intercept
+                fig_reg.add_trace(
+                    go.Scatter(
+                        x=sub_df["MesAno"],
+                        y=trend_vals,
+                        mode="lines",
+                        name=f"Tendência ({tipo_val})",
+                        line=dict(dash="dash"),
+                    )
+                )
+          except Exception:
+            pass
+
+          st.plotly_chart(fig_reg, use_container_width=True)
 
       with col2:
         st.subheader("Distribuição Estatística (Dispersão)")
@@ -254,7 +305,9 @@ elif aba == "🔍 Auditoria":
         else ["Efetivado"]
     )
     filtro_cenario = st.sidebar.multiselect(
-        "Cenário", cenario_disp, default=cenario_disp
+        "Cenário (ex: Budget vs Efetivado)",
+        cenario_disp,
+        default=cenario_disp,
     )
 
     contas_disp = df["Conta"].dropna().unique().tolist()
@@ -333,6 +386,73 @@ elif aba == "🔍 Auditoria":
             title="Concentração de Valores por Categoria",
         )
         st.plotly_chart(fig_cat_aud, use_container_width=True)
+
+# ==================== DEMAIS ABAS DO SISTEMA ====================
+elif aba == "🚀 Advanced Analytics & KPIs":
+  st.title("Advanced Analytics & KPIs")
+  st.info("Painel de indicadores avançados.")
+
+elif aba == "⚡ Advanced KPIs 2":
+  st.title("Advanced KPIs 2")
+
+elif aba == "Sophisticated Graphics":
+  st.title("Sophisticated Graphics")
+
+elif aba == "Graphics":
+  st.title("Graphics")
+
+elif aba == "KPIs":
+  st.title("KPIs")
+
+elif aba == "Dashboard":
+  st.title("Dashboard Geral")
+
+elif aba == "Statistics":
+  st.title("Statistics")
+
+elif aba == "Statistic2":
+  st.title("Statistic 2")
+
+elif aba == "Financial Analysis":
+  st.title("Financial Analysis")
+
+elif aba == "🤖 IA & Assistant":
+  st.title("Assistente IA")
+
+elif aba == "Lançamentos":
+  st.title("Lançamentos")
+  with st.form("form_lancamento"):
+    tipo_l = st.selectbox("Tipo", ["Receita", "Despesa"])
+    conta_l = st.selectbox("Conta", st.session_state.contas)
+    cat_l = st.selectbox("Categoria", st.session_state.categorias)
+    desc_l = st.text_input("Descrição")
+    valor_l = st.number_input("Valor", min_value=0.0, format="%.2f")
+    data_l = st.date_input("Data")
+    cenario_l = st.selectbox("Cenário", ["Efetivado", "Budget", "Projeção"])
+    status_l = st.selectbox("Status", ["Efetivado", "Pendente"])
+    submitted = st.form_submit_button("Adicionar Lançamento")
+    if submitted:
+      novo_df = pd.DataFrame(
+          [[tipo_l, conta_l, "", cat_l, desc_l, valor_l, pd.to_datetime(data_l), 1, "Único", status_l, cenario_l]],
+          columns=COLUNAS_LANC,
+      )
+      st.session_state.lancamentos = pd.concat(
+          [st.session_state.lancamentos, novo_df], ignore_index=True
+      )
+      st.success("Lançamento adicionado com sucesso!")
+
+elif aba == "Cadastro":
+  st.title("Cadastro Geral")
+
+elif aba == "Cadastro de Categorias e Contas":
+  st.title("Cadastro de Categorias e Contas")
+
+elif aba == "Cartões de Crédito":
+  st.title("Gerenciamento de Cartões de Crédito")
+
+elif aba == "Backup & Segurança":
+  st.title("Backup & Segurança")
+
 
 # ==================== DEMAIS ABAS DO SISTEMA ====================
 elif aba == "🚀 Advanced Analytics & KPIs":
