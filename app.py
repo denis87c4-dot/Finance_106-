@@ -329,6 +329,530 @@ elif aba == "📈 Regression Statistics":
         df["Tipo"].isin(sel_tr)
         & df["Categoria"].isin(sel_cr)
         & df["Conta"].isin(sel_cor)
+        & df["Cenario"].isin(sel_cer)
+    ]
+
+    if df_reg.empty:
+      st.warning(
+          "⚠️ Nenhum registro encontrado com os filtros de regressão aplicados."
+      )
+    else:
+      # Preparação da Série Temporal Diária
+      df_sorted = df_reg.sort_values("Data").dropna(subset=["Data"])
+      if df_sorted.empty:
+        st.warning(
+            "⚠️ Os registros filtrados não possuem datas válidas para"
+            " modelagem de regressão."
+        )
+      else:
+        daily_agg = (
+            df_sorted.groupby(df_sorted["Data"].dt.date)["Valor"]
+            .sum()
+            .reset_index()
+        )
+        daily_agg["Data"] = pd.to_datetime(daily_agg["Data"])
+        daily_agg["TimeIndex"] = (
+            daily_agg["Data"] - daily_agg["Data"].min()
+        ).dt.days + 1
+
+        income_series = (
+            df_sorted[
+                df_sorted["Tipo"].str.lower().str.contains(
+                    "receita|entrada", na=False
+                )
+            ]
+            .groupby(df_sorted["Data"].dt.date)["Valor"]
+            .sum()
+        )
+        expense_series = (
+            abs(
+                df_sorted[
+                    df_sorted["Tipo"].str.lower().str.contains(
+                        "despesa|saída", na=False
+                    )
+                ]
+                .groupby(df_sorted["Data"].dt.date)["Valor"]
+                .sum()
+            )
+        )
+
+        daily_agg["CashFlow"] = daily_agg["Valor"]
+        daily_agg["Income"] = (
+            daily_agg["Data"]
+            .dt.date.map(income_series)
+            .fillna(
+                daily_agg["Valor"].apply(lambda x: x if x > 0 else 0)
+            )
+        )
+        daily_agg["Expenses"] = (
+            daily_agg["Data"]
+            .dt.date.map(expense_series)
+            .fillna(
+                daily_agg["Valor"].apply(lambda x: abs(x) if x < 0 else 0)
+            )
+        )
+        daily_agg["CumulativeCash"] = daily_agg["CashFlow"].cumsum()
+
+        # ==================== CONTROLES INTERATIVOS DO GRÁFICO ====================
+        st.markdown(
+            "### 🎛️ Painel de Controle de Regressão e Parâmetros Dinâmicos"
+        )
+        col_ctrl1, col_ctrl2 = st.columns(2)
+
+        param_escolhido = col_ctrl1.selectbox(
+            "Selecione o Parâmetro Financeiro para Análise",
+            options=["Cash Flow", "Income", "Expenses", "Cash Acumulado"],
+            index=0,
+            help="Escolha qual indicador financeiro terá sua tendência modelada.",
+        )
+
+        modelo_escolhido = col_ctrl2.selectbox(
+            "Selecione o Modelo de Regressão Estatística",
+            options=[
+                "Linear (OLS)",
+                "Exponencial ($y = ae^{bx}$)",
+                "Logarítmica ($y = a \\ln(x) + b$)",
+                "Polinomial (Grau 2)",
+            ],
+            index=0,
+            help=(
+                "Escolha o tipo de curva matemática ajustada aos dados"
+                " filtrados."
+            ),
+        )
+
+        map_col = {
+            "Cash Flow": "CashFlow",
+            "Income": "Income",
+            "Expenses": "Expenses",
+            "Cash Acumulado": "CumulativeCash",
+        }
+        y_col = map_col[param_escolhido]
+        x_vals = daily_agg["TimeIndex"].values
+        y_vals = daily_agg[y_col].values
+
+        n_pts = len(x_vals)
+        r_squared = 0.0
+        slope = 0.0
+        intercept = 0.0
+        y_pred = np.zeros_like(y_vals, dtype=float)
+
+        if n_pts > 1:
+          if modelo_escolhido == "Linear (OLS)":
+            slope, intercept = np.polyfit(x_vals, y_vals, 1)
+            y_pred = slope * x_vals + intercept
+          elif modelo_escolhido == "Exponencial ($y = ae^{bx}$)":
+            valid_idx = y_vals > 0
+            if valid_idx.sum() > 1:
+              log_y = np.log(y_vals[valid_idx])
+              b, ln_a = np.polyfit(x_vals[valid_idx], log_y, 1)
+              a = np.exp(ln_a)
+              slope, intercept = b, a
+              y_pred = a * np.exp(b * x_vals)
+            else:
+              slope, intercept = 0, y_vals.mean()
+              y_pred = np.full_like(y_vals, intercept)
+          elif modelo_escolhido == "Logarítmica ($y = a \\ln(x) + b$)":
+            valid_idx = x_vals > 0
+            if valid_idx.sum() > 1:
+              ln_x = np.log(x_vals[valid_idx])
+              slope, intercept = np.polyfit(ln_x, y_vals[valid_idx], 1)
+              y_pred = slope * np.log(np.maximum(x_vals, 1)) + intercept
+            else:
+              slope, intercept = 0, y_vals.mean()
+              y_pred = np.full_like(y_vals, intercept)
+          else:
+            poly_coeffs = np.polyfit(x_vals, y_vals, 2)
+            slope = poly_coeffs[1]
+            intercept = poly_coeffs[2]
+            y_pred = np.polyval(poly_coeffs, x_vals)
+
+          ss_res = np.sum((y_vals - y_pred) ** 2)
+          ss_tot = np.sum((y_vals - y_vals.mean()) ** 2)
+          r_squared = (
+              1 - (ss_res / ss_tot) if ss_tot > 0 else 0.0
+          )
+          r_squared = max(0.0, min(1.0, r_squared))
+
+        next_step_val = (
+            (slope * (x_vals[-1] + 30) + intercept)
+            if n_pts > 0
+            else 0.0
+        )
+        volatility_resid = (
+            np.std(y_vals - y_pred) if n_pts > 0 else 0.0
+        )
+        elasticity_trend = (
+            (slope / (y_vals.mean() + 1e-9)) * 100
+            if y_vals.mean() != 0
+            else 0.0
+        )
+
+        st.markdown(
+            f"### 📊 KPIs de Regressão — Parâmetro: **{param_escolhido}**"
+            f" ({modelo_escolhido})"
+        )
+        rk1, rk2, rk3, rk4, rk5 = st.columns(5)
+        rk1.metric("Coeficiente de Determinação ($R^2$)", f"{r_squared:.4f}")
+        rk2.metric("Inclinação da Tendência (Slope)", f"{slope:,.2f}")
+        rk3.metric("Erro Padrão da Estimativa", f"R$ {volatility_resid:,.2f}")
+        rk4.metric("Projeção Tendencial (+30d)", f"R$ {next_step_val:,.2f}")
+        rk5.metric("Elasticidade Tendencial", f"{elasticity_trend:.2f}%")
+
+        rk6, rk7, rk8, rk9, rk10 = st.columns(5)
+        rk6.metric("Intercepto (Base Model)", f"R$ {intercept:,.2f}")
+        rk7.metric("Soma dos Erros Quadráticos", f"{ss_res:,.2f}")
+        rk8.metric("Total de Amostras (Pontos)", f"{n_pts} dias")
+        rk9.metric("Média da Série Analisada", f"R$ {y_vals.mean():,.2f}")
+        rk10.metric("Volatilidade dos Resíduos", f"{(volatility_resid / (abs(y_vals.mean()) + 1e-9))*100:.1f}%")
+
+        st.markdown("---")
+        st.subheader("📈 Gráfico Dinâmico: Série Temporal vs. Curva de Regressão")
+
+        fig_reg = go.Figure()
+        fig_reg.add_trace(
+            go.Scatter(
+                x=daily_agg["Data"],
+                y=y_vals,
+                mode="markers+lines",
+                name=f"Real ({param_escolhido})",
+                marker=dict(size=8, color="#1f77b4"),
+                line=dict(width=1, dash="dot"),
+            )
+        )
+        fig_reg.add_trace(
+            go.Scatter(
+                x=daily_agg["Data"],
+                y=y_pred,
+                mode="lines",
+                name=f"Tendência {modelo_escolhido}",
+                line=dict(width=3, color="#d62728"),
+            )
+        )
+        fig_reg.update_layout(
+            title=f"Regressão {modelo_escolhido} para {param_escolhido} (Filtros Ativos)",
+            xaxis_title="Data",
+            yaxis_title=param_escolhido,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+            margin=dict(l=20, r=20, t=60, b=20),
+            hovermode="x unified",
+        )
+        st.plotly_chart(fig_reg, use_container_width=True)
+
+
+# ==================== RESTANTE DAS ABAS ORIGINAIS ====================
+elif aba == "Sophisticated Graphics":
+  st.title("Sophisticated Graphics")
+  st.info("Abra o menu lateral para navegar.")
+
+elif aba == "Graphics":
+  st.title("Graphics")
+  st.info("Painel gráfico padrão.")
+
+elif aba == "KPIs":
+  st.title("KPIs")
+  st.info("Painel de KPIs tradicionais.")
+
+elif aba == "Dashboard":
+  st.title("Dashboard")
+  st.info("Dashboard executivo geral.")
+
+elif aba == "Statistics":
+  st.title("Statistics")
+  st.info("Estatísticas básicas do sistema.")
+
+elif aba == "Statistic2":
+  st.title("Statistic2")
+  st.info("Estatísticas complementares.")
+
+elif aba == "Financial Analysis":
+  st.title("Financial Analysis")
+  st.info("Análise financeira detalhada.")
+
+elif aba == "🤖 IA & Assistant":
+  st.title("🤖 IA & Assistant")
+  st.info("Assistente inteligente.")
+
+elif aba == "Lançamentos":
+  st.title("Lançamentos")
+  st.markdown("Gerencie seus lançamentos financeiros aqui.")
+  with st.form("form_lanc"):
+    col_a, col_b, col_c = st.columns(3)
+    t_tipo = col_a.selectbox("Tipo", ["Receita", "Despesa"])
+    t_conta = col_b.selectbox("Conta", st.session_state.contas)
+    t_cat = col_c.selectbox("Categoria", st.session_state.categorias)
+
+    col_d, col_e, col_f = st.columns(3)
+    t_desc = col_d.text_input("Descrição", "Ex: Supermercado")
+    t_val = col_e.number_input("Valor", value=150.0, format="%.2f")
+    t_data = col_f.date_input("Data")
+
+    submitted = st.form_submit_button("Adicionar Lançamento")
+    if submitted:
+      novo_reg = pd.DataFrame([
+          {
+              "Tipo": t_tipo,
+              "Conta": t_conta,
+              "Conta Destino": "",
+              "Categoria": t_cat,
+              "Descrição": t_desc,
+              "Valor": t_val if t_tipo == "Receita" else -abs(t_val),
+              "Data": pd.to_datetime(t_data),
+              "Parcelas": "1/1",
+              "Modo Valor": "À vista",
+              "Status": "Efetivado",
+              "Cenario": "Efetivado",
+          }
+      ])
+      st.session_state.lancamentos = pd.concat(
+          [st.session_state.lancamentos, novo_reg], ignore_index=True
+      )
+      st.success("Lançamento adicionado com sucesso!")
+
+  if not st.session_state.lancamentos.empty:
+    st.dataframe(st.session_state.lancamentos, use_container_width=True)
+
+elif aba == "Cadastro":
+  st.title("Cadastro")
+
+elif aba == "Cadastro de Categorias e Contas":
+  st.title("Cadastro de Categorias e Contas")
+
+elif aba == "Cartões de Crédito":
+  st.title("Cartões de Crédito")
+
+elif aba == "Backup & Segurança":
+  st.title("Backup & Segurança")
+
+
+# ==================== ABA 1: ADVANCED ANALYTICS & STATISTICAL KPIS ====================
+if aba == "🚀 Advanced Analytics & KPIs":
+  st.title("🚀 Advanced Analytics & Statistical KPIs — Fluxo 106")
+  st.markdown(
+      "Painel executivo de inteligência analítica com filtros dinâmicos,"
+      " estatística robusta, dispersão de cauda, entropia informacional e"
+      " índices de rastreamento."
+  )
+
+  df = st.session_state.lancamentos.copy()
+
+  if df.empty:
+    st.info(
+        "📭 Nenhum lançamento cadastrado ainda. Adicione transações na aba"
+        " **Lançamentos** para popular o painel."
+    )
+  else:
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔍 Filtros Poderosos (Aba 1)")
+
+    tipos_disp = df["Tipo"].dropna().unique().tolist()
+    cats_disp = df["Categoria"].dropna().unique().tolist()
+    contas_disp = df["Conta"].dropna().unique().tolist()
+    cenarios_disp = (
+        df["Cenario"].dropna().unique().tolist()
+        if "Cenario" in df.columns
+        else ["Efetivado"]
+    )
+
+    sel_tipos = st.sidebar.multiselect(
+        "Filtrar por Tipo",
+        options=tipos_disp,
+        default=tipos_disp,
+        key="f_tipo_1",
+    )
+    sel_cats = st.sidebar.multiselect(
+        "Filtrar por Categoria",
+        options=cats_disp,
+        default=cats_disp,
+        key="f_cat_1",
+    )
+    sel_contas = st.sidebar.multiselect(
+        "Filtrar por Conta",
+        options=contas_disp,
+        default=contas_disp,
+        key="f_conta_1",
+    )
+    sel_cenarios = st.sidebar.multiselect(
+        "Filtrar por Cenário",
+        options=cenarios_disp,
+        default=cenarios_disp,
+        key="f_cen_1",
+    )
+
+    df_filtrado = df[
+        df["Tipo"].isin(sel_tipos)
+        & df["Categoria"].isin(sel_cats)
+        & df["Conta"].isin(sel_contas)
+        & df["Cenario"].isin(sel_cenarios)
+    ]
+
+    if df_filtrado.empty:
+      st.warning("⚠️ Nenhum registro encontrado com os filtros selecionados.")
+    else:
+      valores = df_filtrado["Valor"]
+      n_obs = len(valores)
+      media = valores.mean()
+      mediana = valores.median()
+      desvio_padrao = valores.std()
+      cv = (
+          (desvio_padrao / media) * 100
+          if media != 0 and not np.isnan(media)
+          else 0.0
+      )
+      mad = np.median(np.abs(valores - mediana))
+      p95 = np.percentile(valores, 95) if n_obs > 1 else valores.max()
+      skewness = valores.skew() if n_obs > 2 else 0.0
+      kurtosis = valores.kurtosis() if n_obs > 2 else 0.0
+      cat_counts = df_filtrado["Categoria"].value_counts(normalize=True)
+      shannon_entropy = -(cat_counts * np.log2(cat_counts + 1e-9)).sum()
+
+      sorted_vals = np.sort(valores.abs())
+      if n_obs > 0 and sorted_vals.sum() > 0:
+        index = np.arange(1, n_obs + 1)
+        gini = (
+            (2 * np.sum(index * sorted_vals)) / (n_obs * sorted_vals.sum())
+            - (n_obs + 1) / n_obs
+        )
+      else:
+        gini = 0.0
+
+      st.markdown("### 📊 Indicadores de Estatística Robusta e Dispersão")
+      c1, c2, c3, c4 = st.columns(4)
+      c1.metric("Coeficiente de Variação (CV)", f"{cv:.2f}%")
+      c2.metric("Desvio Absoluto Mediano (MAD)", f"R$ {mad:,.2f}")
+      c3.metric("Percentil P95 (Cauda)", f"R$ {p95:,.2f}")
+      c4.metric("Entropia de Shannon", f"{shannon_entropy:.2f} bits")
+
+      c5, c6, c7, c8 = st.columns(4)
+      c5.metric("Assimetria (Skewness)", f"{skewness:.2f}")
+      c6.metric("Curtose", f"{kurtosis:.2f}")
+      c7.metric("Índice Gini", f"{gini:.2f}")
+      c8.metric("Total Filtrado", f"R$ {valores.sum():,.2f}")
+
+
+# ==================== ABA 2: ADVANCED KPIS 2 ====================
+elif aba == "⚡ Advanced KPIs 2":
+  st.title("⚡ Advanced KPIs 2: Statistics & Financial Synthesis — Fluxo 106")
+  st.markdown("Painel executivo com 20 KPIs estatístico-financeiros inéditos.")
+
+  df = st.session_state.lancamentos.copy()
+  if df.empty:
+    st.info("📭 Nenhum lançamento cadastrado.")
+  else:
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔍 Filtros Poderosos (Aba 2)")
+    sel_t2 = st.sidebar.multiselect(
+        "Tipo (KPIs 2)",
+        options=df["Tipo"].dropna().unique().tolist(),
+        default=df["Tipo"].dropna().unique().tolist(),
+        key="f_tipo_2",
+    )
+    sel_c2 = st.sidebar.multiselect(
+        "Categoria (KPIs 2)",
+        options=df["Categoria"].dropna().unique().tolist(),
+        default=df["Categoria"].dropna().unique().tolist(),
+        key="f_cat_2",
+    )
+    sel_co2 = st.sidebar.multiselect(
+        "Conta (KPIs 2)",
+        options=df["Conta"].dropna().unique().tolist(),
+        default=df["Conta"].dropna().unique().tolist(),
+        key="f_conta_2",
+    )
+    sel_ce2 = st.sidebar.multiselect(
+        "Cenário (KPIs 2)",
+        options=(
+            df["Cenario"].dropna().unique().tolist()
+            if "Cenario" in df.columns
+            else ["Efetivado"]
+        ),
+        default=(
+            df["Cenario"].dropna().unique().tolist()
+            if "Cenario" in df.columns
+            else ["Efetivado"]
+        ),
+        key="f_cen_2",
+    )
+
+    df_f2 = df[
+        df["Tipo"].isin(sel_t2)
+        & df["Categoria"].isin(sel_c2)
+        & df["Conta"].isin(sel_co2)
+        & df["Cenario"].isin(sel_ce2)
+    ]
+    st.success(
+        f"Registros carregados na Aba 2: {len(df_f2)} transações filtradas."
+    )
+
+
+# ==================== ABA 3: REGRESSION STATISTICS ====================
+elif aba == "📈 Regression Statistics":
+  st.title("📈 Regression Statistics & Trend Modeling — Fluxo 106")
+  st.markdown(
+      "Análise econométrica e estatística preditiva com modelos de regressão"
+      " **Linear, Exponencial, Logarítmica e Polinomial** aplicados a **Cash"
+      " Flow, Income, Expenses e Cash Acumulado**."
+  )
+
+  df = st.session_state.lancamentos.copy()
+
+  if df.empty:
+    st.info(
+        "📭 Nenhum lançamento cadastrado. Adicione transações na aba"
+        " **Lançamentos** para popular as regressões."
+    )
+  else:
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+
+    # ==================== FILTROS PODEROSOS (REGRESSION) ====================
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔍 Filtros Poderosos (Regression)")
+
+    tipos_reg = df["Tipo"].dropna().unique().tolist()
+    cats_reg = df["Categoria"].dropna().unique().tolist()
+    contas_reg = df["Conta"].dropna().unique().tolist()
+    cenarios_reg = (
+        df["Cenario"].dropna().unique().tolist()
+        if "Cenario" in df.columns
+        else ["Efetivado"]
+    )
+
+    sel_tr = st.sidebar.multiselect(
+        "Tipo (Regressão)",
+        options=tipos_reg,
+        default=tipos_reg,
+        key="f_tipo_reg",
+    )
+    sel_cr = st.sidebar.multiselect(
+        "Categoria (Regressão)",
+        options=cats_reg,
+        default=cats_reg,
+        key="f_cat_reg",
+    )
+    sel_cor = st.sidebar.multiselect(
+        "Conta (Regressão)",
+        options=contas_reg,
+        default=contas_reg,
+        key="f_conta_reg",
+    )
+    sel_cer = st.sidebar.multiselect(
+        "Cenário (Regressão)",
+        options=cenarios_reg,
+        default=cenarios_reg,
+        key="f_cen_reg",
+    )
+
+    df_reg = df[
+        df["Tipo"].isin(sel_tr)
+        & df["Categoria"].isin(sel_cr)
+        & df["Conta"].isin(sel_cor)
         & df["Cenario"].isin(sel_cer]
     ]
 
