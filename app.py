@@ -7,34 +7,13 @@ import numpy_financial as npf
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from scipy import stats
 from scipy.stats import norm
 import streamlit as st
 
 # Configuração da página
 st.set_page_config(
     page_title="Fluxo Financeiro Profissional", page_icon="💰", layout="wide"
-)
-
-# ==================== NAVEGAÇÃO LATERAL ====================
-aba = st.sidebar.radio(
-    "Navegação",
-    [
-        "🚀 Advanced Analytics & KPIs",
-        "⚡ Advanced KPIs 2",
-        "Sophisticated Graphics",
-        "Graphics",
-        "KPIs",
-        "Dashboard",
-        "Statistics",
-        "Statistic2",
-        "Financial Analysis",
-        "🤖 IA & Assistant",
-        "Lançamentos",
-        "Cadastro",
-        "Cadastro de Categorias e Contas",
-        "Cartões de Crédito",
-        "Backup & Segurança",
-    ],
 )
 
 # ==================== ESTADOS DA SESSÃO ====================
@@ -99,6 +78,326 @@ if "cartoes" not in st.session_state:
           "Vencimento": 17,
       },
   ]
+
+# Garante conversão de datas se houver dados
+if (
+    not st.session_state.lancamentos.empty
+    and "Data" in st.session_state.lancamentos.columns
+):
+  st.session_state.lancamentos["Data"] = pd.to_datetime(
+      st.session_state.lancamentos["Data"], errors="coerce"
+  )
+
+# ==================== NAVEGAÇÃO LATERAL (Novas abas colocadas no topo) ====================
+aba = st.sidebar.radio(
+    "Navegação",
+    [
+        "📊 Regressão Avançada",
+        "🔍 Auditoria",
+        "🚀 Advanced Analytics & KPIs",
+        "⚡ Advanced KPIs 2",
+        "Sophisticated Graphics",
+        "Graphics",
+        "KPIs",
+        "Dashboard",
+        "Statistics",
+        "Statistic2",
+        "Financial Analysis",
+        "🤖 IA & Assistant",
+        "Lançamentos",
+        "Cadastro",
+        "Cadastro de Categorias e Contas",
+        "Cartões de Crédito",
+        "Backup & Segurança",
+    ],
+)
+
+# ==================== ABA: REGRESSÃO AVANÇADA ====================
+if aba == "📊 Regressão Avançada":
+  st.title("📈 Modelagem Preditiva & Regressão Avançada")
+  st.markdown(
+      "Explore tendências temporais, previsões baseadas em mínimos quadrados"
+      " ordinários (OLS) e correlações estatísticas profundas com filtros"
+      " dinâmicos."
+  )
+
+  df = st.session_state.lancamentos.copy()
+
+  if df.empty or "Data" not in df.columns or df["Data"].isna().all():
+    st.info(
+        "Adicione lançamentos com datas válidas na aba de Lançamentos para"
+        " habilitar os modelos de regressão."
+    )
+  else:
+    # --- FILTROS PODEROSOS ---
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔍 Filtros Poderosos (Regressão)")
+
+    min_date = df["Data"].min().date()
+    max_date = df["Data"].max().date()
+
+    filtro_periodo = st.sidebar.date_input(
+        "Período de Análise",
+        value=(min_date, max_date),
+        min_value=min_date,
+        max_value=max_date,
+    )
+
+    tipos_disp = df["Tipo"].dropna().unique().tolist()
+    filtro_tipo = st.sidebar.multiselect(
+        "Filtrar por Tipo", tipos_disp, default=tipos_disp
+    )
+
+    cat_disp = df["Categoria"].dropna().unique().tolist()
+    filtro_cat = st.sidebar.multiselect(
+        "Filtrar por Categoria", cat_disp, default=cat_disp
+    )
+
+    # Aplicação dos filtros
+    df_f = df[
+        (df["Tipo"].isin(filtro_tipo))
+        & (df["Categoria"].isin(filtro_cat))
+        & (df["Data"].dt.date >= filtro_periodo[0])
+        & (df["Data"].dt.date <= filtro_periodo[1])
+    ]
+
+    if df_f.empty:
+      st.warning(
+          "Nenhum registro encontrado com os filtros selecionados na barra"
+          " lateral."
+      )
+    else:
+      # Agrupamento diário/mensal para regressão
+      df_f["MesAno"] = df_f["Data"].dt.to_period("M").dt.to_timestamp()
+      df_reg = (
+          df_f.groupby(["MesAno", "Tipo"])["Valor"].sum().reset_index()
+      )
+
+      col1, col2 = st.columns(2)
+
+      with col1:
+        st.subheader("Tendência Temporal com Regressão Linear")
+        fig_reg = px.scatter(
+            df_reg,
+            x="MesAno",
+            y="Valor",
+            color="Tipo",
+            trendline="ols",
+            title="Evolução Histórica e Linha de Tendência (OLS)",
+            labels={"MesAno": "Mês/Ano", "Valor": "Valor (R$)"},
+        )
+        st.plotly_chart(fig_reg, use_container_width=True)
+
+      with col2:
+        st.subheader("Distribuição Estatística (Dispersão)")
+        fig_box = px.box(
+            df_f,
+            x="Categoria",
+            y="Valor",
+            color="Tipo",
+            title="Análise de Dispersão e Outliers por Categoria",
+        )
+        st.plotly_chart(fig_box, use_container_width=True)
+
+      st.markdown("---")
+      st.subheader("🔬 Métricas de Correlação e Coeficientes de Regressão")
+      pivot_reg = df_f.pivot_table(
+          index="MesAno", columns="Categoria", values="Valor", aggfunc="sum"
+      ).fillna(0)
+      if pivot_reg.shape[1] > 1:
+        corr_matrix = pivot_reg.corr()
+        fig_corr = px.imshow(
+            corr_matrix,
+            text_auto=True,
+            title="Matriz de Correlação entre Categorias",
+            color_continuous_scale="RdBu_r",
+        )
+        st.plotly_chart(fig_corr, use_container_width=True)
+      else:
+        st.info(
+            "Adicione transações em mais de uma categoria para visualizar a"
+            " matriz de correlação."
+        )
+
+# ==================== ABA: AUDITORIA ====================
+elif aba == "🔍 Auditoria":
+  st.title("🔍 Central de Auditoria & Conformidade Financeira")
+  st.markdown(
+      "Painel de fiscalização profunda com detecção de anomalias, métricas de"
+      " desvio e rastreabilidade total dos lançamentos."
+  )
+
+  df = st.session_state.lancamentos.copy()
+
+  if df.empty:
+    st.info(
+        "Nenhum dado cadastrado para auditar. Vá até a aba 'Lançamentos' para"
+        " inserir dados."
+    )
+  else:
+    # --- FILTROS PODEROSOS DE AUDITORIA ---
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔍 Filtros Poderosos (Auditoria)")
+
+    status_disp = (
+        df["Status"].dropna().unique().tolist()
+        if "Status" in df.columns
+        else ["Efetivado"]
+    )
+    filtro_status = st.sidebar.multiselect(
+        "Status do Lançamento", status_disp, default=status_disp
+    )
+
+    cenario_disp = (
+        df["Cenario"].dropna().unique().tolist()
+        if "Cenario" in df.columns
+        else ["Efetivado"]
+    )
+    filtro_cenario = st.sidebar.multiselect(
+        "Cenário", cenario_disp, default=cenario_disp
+    )
+
+    contas_disp = df["Conta"].dropna().unique().tolist()
+    filtro_conta = st.sidebar.multiselect(
+        "Conta de Origem", contas_disp, default=contas_disp
+    )
+
+    # Filtragem
+    df_aud = df.copy()
+    if "Status" in df_aud.columns:
+      df_aud = df_aud[df_aud["Status"].isin(filtro_status)]
+    if "Cenario" in df_aud.columns:
+      df_aud = df_aud[df_aud["Cenario"].isin(filtro_cenario)]
+    if "Conta" in df_aud.columns:
+      df_aud = df_aud[df_aud["Conta"].isin(filtro_conta)]
+
+    # KPIs de Auditoria
+    total_lancamentos = len(df_aud)
+    valor_total_mov = df_aud["Valor"].sum() if not df_aud.empty else 0
+    media_valor = df_aud["Valor"].mean() if not df_aud.empty else 0
+
+    # Cálculo de Outliers (Z-score > 2)
+    if total_lancamentos > 2:
+      z_scores = np.abs(stats.zscore(df_aud["Valor"].fillna(0)))
+      outliers_count = np.sum(z_scores > 2)
+    else:
+      outliers_count = 0
+
+    kpi1, kpi2, kpi3, kpi4 = st.columns(4)
+    kpi1.metric("Total de Registros Auditados", f"{total_lancamentos}")
+    kpi2.metric(
+        "Volume Financeiro Filtrado",
+        f"R$ {valor_total_mov:,.2f}".replace(",", "X")
+        .replace(".", ",")
+        .replace("X", "."),
+    )
+    kpi3.metric(
+        "Média por Lançamento",
+        f"R$ {media_valor:,.2f}".replace(",", "X")
+        .replace(".", ",")
+        .replace("X", "."),
+    )
+    kpi4.metric(
+        "🚨 Alertas de Outliers (Anomalias)",
+        f"{outliers_count}",
+        help="Lançamentos com desvio superior a 2 desvios padrão da média.",
+    )
+
+    st.markdown("---")
+    st.subheader("📋 Detalhamento Analítico e Auditoria Transacional")
+
+    st.dataframe(df_aud, use_container_width=True)
+
+    col_a, col_b = st.columns(2)
+    with col_a:
+      st.subheader("Participação por Conta na Auditoria")
+      if not df_aud.empty and "Conta" in df_aud.columns:
+        fig_conta = px.pie(
+            df_aud,
+            names="Conta",
+            values="Valor",
+            hole=0.4,
+            title="Volume Financeiro por Conta",
+        )
+        st.plotly_chart(fig_conta, use_container_width=True)
+
+    with col_b:
+      st.subheader("Auditoria por Categoria e Tipo")
+      if not df_aud.empty and "Categoria" in df_aud.columns:
+        fig_cat_aud = px.bar(
+            df_aud,
+            x="Categoria",
+            y="Valor",
+            color="Tipo",
+            barmode="group",
+            title="Concentração de Valores por Categoria",
+        )
+        st.plotly_chart(fig_cat_aud, use_container_width=True)
+
+# ==================== DEMAIS ABAS DO SISTEMA ====================
+elif aba == "🚀 Advanced Analytics & KPIs":
+  st.title("Advanced Analytics & KPIs")
+  st.info("Painel de indicadores avançados.")
+
+elif aba == "⚡ Advanced KPIs 2":
+  st.title("Advanced KPIs 2")
+
+elif aba == "Sophisticated Graphics":
+  st.title("Sophisticated Graphics")
+
+elif aba == "Graphics":
+  st.title("Graphics")
+
+elif aba == "KPIs":
+  st.title("KPIs")
+
+elif aba == "Dashboard":
+  st.title("Dashboard Geral")
+
+elif aba == "Statistics":
+  st.title("Statistics")
+
+elif aba == "Statistic2":
+  st.title("Statistic 2")
+
+elif aba == "Financial Analysis":
+  st.title("Financial Analysis")
+
+elif aba == "🤖 IA & Assistant":
+  st.title("Assistente IA")
+
+elif aba == "Lançamentos":
+  st.title("Lançamentos")
+  with st.form("form_lancamento"):
+    tipo_l = st.selectbox("Tipo", ["Receita", "Despesa"])
+    conta_l = st.selectbox("Conta", st.session_state.contas)
+    cat_l = st.selectbox("Categoria", st.session_state.categorias)
+    desc_l = st.text_input("Descrição")
+    valor_l = st.number_input("Valor", min_value=0.0, format="%.2f")
+    data_l = st.date_input("Data")
+    submitted = st.form_submit_button("Adicionar Lançamento")
+    if submitted:
+      novo_df = pd.DataFrame(
+          [[tipo_l, conta_l, "", cat_l, desc_l, valor_l, pd.to_datetime(data_l), 1, "Único", "Efetivado", "Efetivado"]],
+          columns=COLUNAS_LANC,
+      )
+      st.session_state.lancamentos = pd.concat(
+          [st.session_state.lancamentos, novo_df], ignore_index=True
+      )
+      st.success("Lançamento adicionado com sucesso!")
+
+elif aba == "Cadastro":
+  st.title("Cadastro Geral")
+
+elif aba == "Cadastro de Categorias e Contas":
+  st.title("Cadastro de Categorias e Contas")
+
+elif aba == "Cartões de Crédito":
+  st.title("Gerenciamento de Cartões de Crédito")
+
+elif aba == "Backup & Segurança":
+  st.title("Backup & Segurança")
+
 
 # ==================== ABA 1: ADVANCED ANALYTICS & STATISTICAL KPIS ====================
 if aba == "🚀 Advanced Analytics & KPIs":
