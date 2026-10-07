@@ -1,13 +1,13 @@
+import calendar
 import io
 import json
 import zipfile
-import calendar
 import numpy as np
+import numpy_financial as npf
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from scipy.stats import norm
-import numpy_financial as npf
 import streamlit as st
 
 # Configuração da página
@@ -19,6 +19,7 @@ st.set_page_config(
 aba = st.sidebar.radio(
     "Navegação",
     [
+        "🚀 Advanced Analytics & KPIs",
         "Sophisticated Graphics",
         "Graphics",
         "KPIs",
@@ -97,6 +98,188 @@ if "cartoes" not in st.session_state:
           "Vencimento": 17,
       },
   ]
+
+# ==================== ABA 1: ADVANCED ANALYTICS & STATISTICAL KPIS ====================
+if aba == "🚀 Advanced Analytics & KPIs":
+  st.title("🚀 Advanced Analytics & Statistical KPIs — Fluxo 106")
+  st.markdown(
+      "Painel executivo de inteligência analítica com filtros dinâmicos,"
+      " estatística robusta, dispersão de cauda, entropia informacional e"
+      " índices de rastreamento."
+  )
+
+  df = st.session_state.lancamentos.copy()
+
+  if df.empty:
+    st.info(
+        "📭 Nenhum lançamento cadastrado ainda. Adicione transações na aba"
+        " **Lançamentos** para popular o painel estatístico avançado."
+    )
+  else:
+    # Tratamento inicial de tipos de dados
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+
+    # ==================== FILTROS PODEROSOS ====================
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("🔍 Filtros Poderosos (Fluxo 106)")
+
+    tipos_disp = df["Tipo"].dropna().unique().tolist()
+    cats_disp = df["Categoria"].dropna().unique().tolist()
+    contas_disp = df["Conta"].dropna().unique().tolist()
+    cenarios_disp = (
+        df["Cenario"].dropna().unique().tolist()
+        if "Cenario" in df.columns
+        else ["Efetivado"]
+    )
+
+    sel_tipos = st.sidebar.multiselect(
+        "Filtrar por Tipo", options=tipos_disp, default=tipos_disp
+    )
+    sel_cats = st.sidebar.multiselect(
+        "Filtrar por Categoria", options=cats_disp, default=cats_disp
+    )
+    sel_contas = st.sidebar.multiselect(
+        "Filtrar por Conta", options=contas_disp, default=contas_disp
+    )
+    sel_cenarios = st.sidebar.multiselect(
+        "Filtrar por Cenário", options=cenarios_disp, default=cenarios_disp
+    )
+
+    # Filtragem Principal
+    df_filtrado = df[
+        df["Tipo"].isin(sel_tipos)
+        & df["Categoria"].isin(sel_cats)
+        & df["Conta"].isin(sel_contas)
+        & df["Cenario"].isin(sel_cenarios)
+    ]
+
+    if df_filtrado.empty:
+      st.warning("⚠️ Nenhum registro encontrado com os filtros selecionados.")
+    else:
+      valores = df_filtrado["Valor"]
+
+      # ==================== CÁLCULOS ESTATÍSTICOS AVANÇADOS ====================
+      n_obs = len(valores)
+      media = valores.mean()
+      mediana = valores.median()
+      desvio_padrao = valores.std()
+      cv = (
+          (desvio_padrao / media) * 100
+          if media != 0 and not np.isnan(media)
+          else 0.0
+      )
+
+      # Desvio Absoluto Mediano (MAD) - Robusto contra Outliers
+      mad = np.median(np.abs(valores - mediana))
+      # Escore Z Robusto
+      robust_z = (
+          (0.6745 * (valores - mediana) / mad)
+          if mad != 0
+          else np.zeros_like(valores)
+      )
+
+      # Percentis de Cauda
+      p90 = np.percentile(valores, 90) if n_obs > 1 else valores.max()
+      p95 = np.percentile(valores, 95) if n_obs > 1 else valores.max()
+      p99 = np.percentile(valores, 99) if n_obs > 1 else valores.max()
+
+      # Assimetria e Curtose
+      skewness = valores.skew() if n_obs > 2 else 0.0
+      kurtosis = valores.kurtosis() if n_obs > 2 else 0.0
+
+      # Entropia de Shannon (Distribuição de Categorias)
+      cat_counts = df_filtrado["Categoria"].value_counts(normalize=True)
+      shannon_entropy = -(cat_counts * np.log2(cat_counts + 1e-9)).sum()
+
+      # Coeficiente de Gini (Concentração de Valores)
+      sorted_vals = np.sort(valores.abs())
+      if n_obs > 0 and sorted_vals.sum() > 0:
+        index = np.arange(1, n_obs + 1)
+        gini = (
+            (2 * np.sum(index * sorted_vals)) / (n_obs * sorted_vals.sum())
+            - (n_obs + 1) / n_obs
+        )
+      else:
+        gini = 0.0
+
+      # ==================== EXIBIÇÃO DE METRICS (CARDS) ====================
+      st.markdown("### 📊 Indicadores de Estatística Robusta e Dispersão")
+      col1, col2, col3, col4 = st.columns(4)
+      col1.metric(
+          "Coeficiente de Variação (CV)",
+          f"{cv:.2f}%",
+          help="Volatilidade relativa (Desvio Padrão / Média).",
+      )
+      col2.metric(
+          "Desvio Absoluto Mediano (MAD)",
+          f"R$ {mad:,.2f}",
+          help="Dispersão imune a valores extremos (outliers).",
+      )
+      col3.metric(
+          "Percentil P95 (Cauda)",
+          f"R$ {p95:,.2f}",
+          help="Valor limite que engloba 95% do volume transacionado.",
+      )
+      col4.metric(
+          "Entropia de Shannon",
+          f"{shannon_entropy:.2f} bits",
+          help=(
+              "Mede a diversidade e imprevisibilidade das categorias de fluxo."
+          ),
+      )
+
+      col5, col6, col7, col8 = st.columns(4)
+      col5.metric(
+          "Assimetria (Skewness)",
+          f"{skewness:.2f}",
+          help="Indica o viés de distribuição (caudas longas à direita/esquerda).",
+      )
+      col6.metric(
+          "Curtose",
+          f"{kurtosis:.2f}",
+          help="Mede a propensão do sistema a choques ou surpresas extremas.",
+      )
+      col7.metric(
+          "Índice Gini",
+          f"{gini:.2f}",
+          help="Concentração de volume entre os lançamentos (0 a 1).",
+      )
+      col8.metric(
+          "Total Filtrado",
+          f"R$ {valores.sum():,.2f}",
+          help="Soma líquida/total dos registros filtrados.",
+      )
+
+      # ==================== GRÁFICOS ANALÍTICOS ====================
+      st.markdown("---")
+      c_gr1, c_gr2 = st.columns(2)
+
+      with c_gr1:
+        st.subheader("📈 Distribuição de Frequência (Histograma)")
+        fig_hist = px.histogram(
+            df_filtrado,
+            x="Valor",
+            nbins=20,
+            title="Densidade de Valores por Lançamento",
+            color_discrete_sequence=["#2ca02c"],
+        )
+        st.plotly_chart(fig_hist, use_container_width=True)
+
+      with c_gr2:
+        st.subheader("🎯 Concentração por Categoria (Gini / Share)")
+        cat_group = (
+            df_filtrado.groupby("Categoria")["Valor"].sum().reset_index()
+        )
+        fig_pie = px.pie(
+            cat_group,
+            names="Categoria",
+            values="Valor",
+            title="Participação Percentual por Categoria",
+            hole=0.4,
+        )
+        st.plotly_chart(fig_pie, use_container_width=True)
+
 
 # ==================== ABA: STATISTIC2 ====================
 if aba == "Statistic2":
