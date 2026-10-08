@@ -1,4 +1,3 @@
-import calendar
 import io
 import json
 import zipfile
@@ -19,6 +18,7 @@ st.set_page_config(
 aba = st.sidebar.radio(
     "Navegação",
     [
+        "📊 Norm. Dist.",
         "🔍 Auditoria Avançada",
         "🚀 Advanced Analytics & KPIs",
         "⚡ Advanced KPIs 2",
@@ -100,6 +100,229 @@ if "cartoes" not in st.session_state:
           "Vencimento": 17,
       },
   ]
+
+# ==================== ABA: NORM. DIST. ====================
+if aba == "📊 Norm. Dist.":
+  st.title("📊 Distribuição Normal & Probabilidades Financeiras")
+  st.markdown(
+      "Analise a probabilidade estatística de ocorrência de valores com base"
+      " na curva normal para **Income**, **Expense**, **Cash Flow** e"
+      " **Acumulado**, aplicando filtros temporais e projeções."
+  )
+
+  df = st.session_state.lancamentos.copy()
+
+  if df.empty:
+    st.info(
+        "Nenhum lançamento cadastrado ainda. Vá até a aba 'Lançamentos' para"
+        " adicionar dados e ver a mágica acontecer!"
+    )
+  else:
+    # Tratamento de Datas e Valores
+    df["Data"] = pd.to_datetime(df["Data"], errors="coerce")
+    df["Valor"] = pd.to_numeric(df["Valor"], errors="coerce").fillna(0.0)
+    df = df.dropna(subset=["Data"])
+
+    if df.empty:
+      st.warning(
+          "Não há lançamentos com datas válidas para processar a análise."
+      )
+    else:
+      # ==================== FILTROS PODEROSOS ====================
+      st.sidebar.markdown("---")
+      st.sidebar.subheader("🎛️ Filtros da Análise Normal")
+
+      # Filtro de Período de Agregação
+      freq_opcao = st.sidebar.selectbox(
+          "Agregação Temporal",
+          ["Mês", "Trimestre", "Semestre", "Ano"],
+          index=0,
+      )
+
+      # Mapeamento de frequência para o Pandas
+      freq_map = {
+          "Mês": "M",
+          "Trimestre": "Q",
+          "Semestre": "2Q",  # ou resample personalizado
+          "Ano": "Y",
+      }
+
+      # Filtro de Cenário / Status se existirem
+      cenarios_disp = (
+          df["Cenario"].unique().tolist() if "Cenario" in df.columns else []
+      )
+      sel_cenario = (
+          st.sidebar.multiselect(
+              "Cenário", cenarios_disp, default=cenarios_disp
+          )
+          if cenarios_disp
+          else []
+      )
+      if sel_cenario and "Cenario" in df.columns:
+        df = df[df["Cenario"].isin(sel_cenario)]
+
+      # Projeção (Adicionar períodos futuros simulados ou taxa de crescimento)
+      st.sidebar.markdown("---")
+      st.sidebar.subheader("🚀 Configuração de Projeção")
+      usar_projecao = st.sidebar.checkbox(
+          "Ativar Simulação de Projeção", value=False
+      )
+      taxa_crescimento = (
+          st.sidebar.slider(
+              "Taxa de Crescimento Projetada (% p.m.)", -10.0, 20.0, 2.0, 0.5
+          )
+          / 100.0
+          if usar_projecao
+          else 0.0
+      )
+      meses_proj = (
+          st.sidebar.slider("Meses à Projetar", 1, 12, 6)
+          if usar_projecao
+          else 0
+      )
+
+      # Preparação das Séries Temporais por Variável
+      # Separar Income (Receitas) e Expense (Despesas)
+      df_inc = df[df["Tipo"].str.lower() == "receita"]
+      df_exp = df[df["Tipo"].str.lower() == "despesa"]
+
+      # Reamostragem temporal baseada na escolha
+      if freq_opcao == "Mês":
+        rule = "ME"
+        fmt_str = "%Y-%m"
+      elif freq_opcao == "Trimestre":
+        rule = "QE"
+        fmt_str = "%Y-Q%q"
+      elif freq_opcao == "Semestre":
+        # custom semestral grouping
+        df["Periodo_Sem"] = df["Data"].dt.year.astype(str) + "-S" + np.where(df["Data"].dt.month <= 6, "1", "2")
+        rule = None
+      else:  # Ano
+        rule = "YE"
+        fmt_str = "%Y"
+
+      if freq_opcao != "Semestre":
+        inc_agg = (
+            df_inc.set_index("Data")["Valor"].resample(rule).sum().reset_index()
+        )
+        exp_agg = (
+            df_exp.set_index("Data")["Valor"].resample(rule).sum().reset_index()
+        )
+        
+        # Merge para alinhar os períodos
+        ts_df = pd.merge(inc_agg, exp_agg, on="Data", suffixes=('_Inc', '_Exp'), how="outer").fillna(0)
+        ts_df.rename(columns={"Valor_Inc": "Income", "Valor_Exp": "Expense"}, inplace=True)
+        ts_df["Periodo"] = ts_df["Data"].dt.to_period(freq_map[freq_opcao]).astype(str)
+      else:
+        inc_agg = df_inc.groupby("Periodo_Sem")["Valor"].sum().reset_index()
+        exp_agg = df_exp.groupby("Periodo_Sem")["Valor"].sum().reset_index()
+        ts_df = pd.merge(inc_agg, exp_agg, on="Periodo_Sem", suffixes=('_Inc', '_Exp'), how="outer").fillna(0)
+        ts_df.rename(columns={"Periodo_Sem": "Periodo", "Valor_Inc": "Income", "Valor_Exp": "Expense"}, inplace=True)
+
+      ts_df = ts_df.sort_values("Periodo").reset_index(drop=True)
+
+      # Se houver projeção, estender o DataFrame
+      if usar_projecao and meses_proj > 0 and not ts_df.empty:
+        ult_val_inc = ts_df["Income"].iloc[-1]
+        ult_val_exp = ts_df["Expense"].iloc[-1]
+        for i in range(1, meses_proj + 1):
+          ult_val_inc *= 1 + taxa_crescimento
+          ult_val_exp *= 1 + (taxa_crescimento * 0.5) # despesa sobe mais devagar
+          novo_periodo = f"Proj +{i}"
+          nova_linha = pd.DataFrame({"Periodo": [novo_periodo], "Income": [ult_val_inc], "Expense": [ult_val_exp]})
+          ts_df = pd.concat([ts_df, nova_linha], ignore_index=True)
+
+      # Calcular Cash Flow e Acumulado
+      ts_df["Cash Flow"] = ts_df["Income"] - ts_df["Expense"]
+      ts_df["Acumulado"] = ts_df["Cash Flow"].cumsum()
+
+      if ts_df.empty or len(ts_df) < 2:
+        st.warning("Dados insuficientes após a agregação para gerar a distribuição estatística. Adicione mais lançamentos.")
+      else:
+        # Seleção da Variável de Análise
+        st.markdown("---")
+        col_sel1, col_sel2 = st.columns([2, 2])
+        with col_sel1:
+          var_escolhida = st.selectbox(
+              "🎯 Selecione a Variável para Análise de Probabilidade",
+              ["Income", "Expense", "Cash Flow", "Acumulado"]
+          )
+        with col_sel2:
+          # Input Interativo do Valor X
+            val_min_s = float(ts_df[var_escolhida].min())
+            val_max_s = float(ts_df[var_escolhida].max())
+            val_med_s = float(ts_df[var_escolhida].mean())
+            x_valor = st.number_input(
+                f"Defina o valor de corte (X) para {var_escolhida}:",
+                min_value=val_min_s - abs(val_min_s)*0.5,
+                max_value=val_max_s + abs(val_max_s)*0.5,
+                value=val_med_s
+            )
+
+        # Estatísticas da Série Escolhida
+        dados_serie = ts_df[var_escolhida].dropna()
+        mu = dados_serie.mean()
+        sigma = dados_serie.std()
+        if sigma == 0 or np.isnan(sigma):
+          sigma = 1e-5 # Evitar divisão por zero
+
+        # Cálculo das Probabilidades via Distribuição Normal (CDF)
+        prob_menor = norm.cdf(x_valor, mu, sigma) * 100
+        prob_maior = (1 - norm.cdf(x_valor, mu, sigma)) * 100
+
+        # Cards de Indicadores
+        m1, m2, m3, m4 = st.columns(4)
+        m1.metric("Média ($\mu$)", f"R$ {mu:,.2f}")
+        m2.metric("Desvio Padrão ($\sigma$)", f"R$ {sigma:,.2f}")
+        m3.metric(f"Prob. de ser $\le$ R$ {x_valor:,.2f}", f"{prob_menor:.2f}%")
+        m4.metric(f"Prob. de ser $>$ R$ {x_valor:,.2f}", f"{prob_maior:.2f}%")
+
+        # Gráfico da Curva Normal Interativo
+        x_axis = np.linspace(mu - 3*sigma, mu + 3*sigma, 500)
+        y_axis = norm.pdf(x_axis, mu, sigma)
+
+        fig = go.Figure()
+
+        # Linha da Curva Normal
+        fig.add_trace(go.Scatter(
+            x=x_axis, y=y_axis, mode='lines', name='Curva Normal Teórica',
+            line=dict(color='royalblue', width=3)
+        ))
+
+        # Área menor ou igual a X
+        x_fill_menor = x_axis[x_axis <= x_valor]
+        y_fill_menor = norm.pdf(x_fill_menor, mu, sigma)
+        if len(x_fill_menor) > 0:
+          fig.add_trace(go.Scatter(
+              x=np.concatenate([[x_fill_menor[0]], x_fill_menor, [x_fill_menor[-1]]]),
+              y=np.concatenate([[0], y_fill_menor, [0]]),
+              fill='tozeroy', name=f'P(X $\le$ {x_valor:,.2f}) = {prob_menor:.1f}%',
+              fillcolor='rgba(0, 204, 150, 0.3)', line=dict(color='rgba(255,255,255,0)')
+          ))
+
+        # Linha vertical indicando o valor X escolhido
+        fig.add_vline(x=x_valor, line_dash="dash", line_color="red", annotation_text=f"X = {x_valor:,.2f}", annotation_position="top right")
+
+        fig.update_layout(
+            title=f"Distribuição Normal Ajustada — {var_escolhida} ({freq_opcao})",
+            xaxis_title=var_escolhida,
+            yaxis_title="Densidade de Probabilidade",
+            template="plotly_dark",
+            height=450,
+            margin=dict(l=20, r=20, t=40, b=20)
+        )
+
+        st.plotly_chart(fig, use_container_width=True)
+
+        # Tabela Detalhada dos Dados Agregados
+        with st.expander("📋 Ver dados agregados e projeções utilizadas"):
+          st.dataframe(ts_df.style.format({
+              "Income": "R$ {:,.2f}",
+              "Expense": "R$ {:,.2f}",
+              "Cash Flow": "R$ {:,.2f}",
+              "Acumulado": "R$ {:,.2f}"
+          }), use_container_width=True)
+
 
 # ==================== ABA: AUDITORIA AVANÇADA ====================
 if aba == "🔍 Auditoria Avançada":
