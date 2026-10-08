@@ -15,6 +15,29 @@ st.set_page_config(
     page_title="Fluxo Financeiro Profissional", page_icon="💰", layout="wide"
 )
 
+# ==================== NAVEGAÇÃO LATERAL ====================
+aba = st.sidebar.radio(
+    "Navegação",
+    [
+        "🔍 Auditoria Avançada",
+        "🚀 Advanced Analytics & KPIs",
+        "⚡ Advanced KPIs 2",
+        "Sophisticated Graphics",
+        "Graphics",
+        "KPIs",
+        "Dashboard",
+        "Statistics",
+        "Statistic2",
+        "Financial Analysis",
+        "🤖 IA & Assistant",
+        "Lançamentos",
+        "Cadastro",
+        "Cadastro de Categorias e Contas",
+        "Cartões de Crédito",
+        "Backup & Segurança",
+    ],
+)
+
 # ==================== ESTADOS DA SESSÃO ====================
 COLUNAS_LANC = [
     "Tipo",
@@ -78,314 +101,6 @@ if "cartoes" not in st.session_state:
       },
   ]
 
-# ==================== NAVEGAÇÃO LATERAL ====================
-aba = st.sidebar.radio(
-    "Navegação",
-    [
-        "🔔 Norm.Dist (Probabilidade)",
-        "📈 Inteligência Preditiva & Regressão",
-        "🔍 Auditoria Avançada",
-        "🚀 Advanced Analytics & KPIs",
-        "⚡ Advanced KPIs 2",
-        "Sophisticated Graphics",
-        "Graphics",
-        "KPIs",
-        "Dashboard",
-        "Statistics",
-        "Statistic2",
-        "Financial Analysis",
-        "🤖 IA & Assistant",
-        "Lançamentos",
-        "Cadastro",
-        "Cadastro de Categorias e Contas",
-        "Cartões de Crédito",
-        "Backup & Segurança",
-    ],
-)
-
-# ==================== PAINEL DE FILTROS PODEROSOS (GLOBAL) ====================
-st.sidebar.markdown("---")
-st.sidebar.subheader("🎛️ Filtros Poderosos Globais")
-
-df_global = st.session_state.lancamentos.copy()
-
-if not df_global.empty:
-  df_global["Data"] = pd.to_datetime(df_global["Data"], errors="coerce")
-  df_global["Valor"] = pd.to_numeric(df_global["Valor"], errors="coerce").fillna(
-      0.0
-  )
-
-  # 1. Período
-  min_date = (
-      df_global["Data"].min().date()
-      if not df_global["Data"].isna().all()
-      else pd.Timestamp.today().date()
-  )
-  max_date = (
-      df_global["Data"].max().date()
-      if not df_global["Data"].isna().all()
-      else pd.Timestamp.today().date()
-  )
-  filtro_periodo = st.sidebar.date_input(
-      "Período de Análise",
-      value=(min_date, max_date),
-      min_value=min_date,
-      max_value=max_date,
-  )
-
-  # 2. Extração de Meses Disponíveis para o Filtro Específico
-  df_global["AnoMesStr"] = df_global["Data"].dt.to_period("M").astype(str)
-  meses_disponiveis = sorted(df_global["AnoMesStr"].dropna().unique().tolist())
-
-  sel_meses = st.sidebar.multiselect(
-      "Filtrar por Meses Específicos (AAAA-MM)",
-      options=meses_disponiveis,
-      default=meses_disponiveis,
-  )
-
-  # 3. Opções dos Demais Filtros
-  status_opc = (
-      df_global["Status"].dropna().unique().tolist()
-      if "Status" in df_global.columns
-      else []
-  )
-  cenario_opc = (
-      df_global["Cenario"].dropna().unique().tolist()
-      if "Cenario" in df_global.columns
-      else []
-  )
-  tipo_opc = df_global["Tipo"].dropna().unique().tolist()
-  cat_opc = df_global["Categoria"].dropna().unique().tolist()
-  conta_opc = (
-      df_global["Conta"].dropna().unique().tolist()
-      if "Conta" in df_global.columns
-      else []
-  )
-  modo_opc = (
-      df_global["Modo Valor"].dropna().unique().tolist()
-      if "Modo Valor" in df_global.columns
-      else []
-  )
-
-  # 4. Componentes Multiselect
-  sel_status = st.sidebar.multiselect(
-      "Filtrar por Status", options=status_opc, default=status_opc
-  )
-  sel_cenario = st.sidebar.multiselect(
-      "Filtrar por Cenário (Orçado/Efetivado)",
-      options=cenario_opc,
-      default=cenario_opc,
-  )
-  sel_tipo = st.sidebar.multiselect(
-      "Filtrar por Tipo", options=tipo_opc, default=tipo_opc
-  )
-  sel_cat = st.sidebar.multiselect(
-      "Filtrar por Categoria", options=cat_opc, default=cat_opc
-  )
-  sel_conta = st.sidebar.multiselect(
-      "Filtrar por Conta", options=conta_opc, default=conta_opc
-  )
-  sel_modo = st.sidebar.multiselect(
-      "Filtrar por Modo Valor", options=modo_opc, default=modo_opc
-  )
-
-  # Aplicação da Máscara Global em todas as abas
-  mask_global = pd.Series(True, index=df_global.index)
-  if len(filtro_periodo) == 2:
-    start_d, end_d = filtro_periodo
-    mask_global &= df_global["Data"].dt.date.between(start_d, end_d)
-  if sel_meses:
-    mask_global &= df_global["AnoMesStr"].isin(sel_meses)
-  if sel_status and "Status" in df_global.columns:
-    mask_global &= df_global["Status"].isin(sel_status)
-  if sel_cenario and "Cenario" in df_global.columns:
-    mask_global &= df_global["Cenario"].isin(sel_cenario)
-  if sel_tipo:
-    mask_global &= df_global["Tipo"].isin(sel_tipo)
-  if sel_cat:
-    mask_global &= df_global["Categoria"].isin(sel_cat)
-  if sel_conta and "Conta" in df_global.columns:
-    mask_global &= df_global["Conta"].isin(sel_conta)
-  if sel_modo and "Modo Valor" in df_global.columns:
-    mask_global &= df_global["Modo Valor"].isin(sel_modo)
-
-  df_filtrado_global = df_global.drop(columns=["AnoMesStr"]).copy()
-  df_filtrado_global = df_filtrado_global[mask_global]
-else:
-  df_filtrado_global = pd.DataFrame(columns=COLUNAS_LANC)
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("⚙️ Configurações Preditivas")
-horizonte_proj = st.sidebar.slider(
-    "Horizonte de Projeção (Meses Futuros)", 1, 12, 3
-)
-janela_mm = st.sidebar.slider("Janela da Média Móvel (Meses)", 2, 6, 3)
-
-
-# ==================== ABA: NORM.DIST (PROBABILIDADE) ====================
-if aba == "🔔 Norm.Dist (Probabilidade)":
-  st.title("🔔 Curva de Sino & Análise Probabilística (Norm.Dist)")
-  st.markdown(
-      "Analise a distribuição estatística e calcule a probabilidade"
-      " acumulada ($P(X < x)$) para **Income**, **Expense**, **Cash Flow** e"
-      " **Acumulado**, considerando os filtros poderosos, incluindo a"
-      " seleção específica de meses."
-  )
-
-  if df_filtrado_global.empty:
-    st.info(
-        "Nenhum lançamento encontrado com os filtros atuais para gerar a"
-        " distribuição normal."
-    )
-  else:
-    df_nd = df_filtrado_global.copy()
-    df_nd["MesAno"] = df_nd["Data"].dt.to_period("M").dt.to_timestamp()
-
-    df_mensal_nd = (
-        df_nd.groupby(["MesAno", "Tipo"])["Valor"].sum().reset_index()
-    )
-    df_piv_nd = (
-        df_mensal_nd.pivot(index="MesAno", columns="Tipo", values="Valor")
-        .fillna(0.0)
-        .sort_index()
-    )
-
-    cols_lower_nd = {c.lower(): c for c in df_piv_nd.columns}
-    inc_c = next(
-        (
-            cols_lower_nd[c]
-            for c in cols_lower_nd
-            if "receita" in c or "income" in c or "entrada" in c
-        ),
-        None,
-    )
-    exp_c = next(
-        (
-            cols_lower_nd[c]
-            for c in cols_lower_nd
-            if "despesa" in c or "expense" in c or "saída" in c
-        ),
-        None,
-    )
-
-    df_serie = pd.DataFrame(index=df_piv_nd.index)
-    df_serie["Income"] = df_piv_nd[inc_c] if inc_c else 0.0
-    df_serie["Expense"] = df_piv_nd[exp_c] if exp_c else 0.0
-    df_serie["Cash_Flow"] = df_serie["Income"] - df_serie["Expense"]
-    df_serie["Acumulado"] = df_serie["Cash_Flow"].cumsum()
-
-    col_sel1, col_sel2 = st.columns([2, 2])
-    with col_sel1:
-      metrica_escolhida = st.selectbox(
-          "Escolha a Métrica para Análise Norm.Dist:",
-          ["Cash_Flow", "Income", "Expense", "Acumulado"],
-          format_func=lambda x: {
-              "Cash_Flow": "Fluxo de Caixa (Cash Flow)",
-              "Income": "Receitas (Income)",
-              "Expense": "Despesas (Expense)",
-              "Acumulado": "Saldo Acumulado",
-          }[x],
-      )
-
-    serie_dados = df_serie[metrica_escolhida].dropna()
-
-    if len(serie_dados) < 2:
-      st.warning(
-          "É necessário pelo menos 2 períodos (meses) selecionados para"
-          " calcular a média e o desvio padrão da distribuição normal."
-      )
-    else:
-      mu = serie_dados.mean()
-      sigma = serie_dados.std()
-      if sigma == 0:
-        sigma = 1e-5
-
-      with col_sel2:
-        val_x = st.number_input(
-            f"Valor de referência (x) para probabilidade em {metrica_escolhida}:",
-            value=float(mu),
-            step=float(max(abs(mu) * 0.05, 1.0)),
-        )
-
-      prob_menor = norm.cdf(val_x, loc=mu, scale=sigma) * 100
-      prob_maior = (1 - norm.cdf(val_x, loc=mu, scale=sigma)) * 100
-
-      st.markdown("### 📊 Indicadores Estatísticos da Curva")
-      k1, k2, k3, k4, k5 = st.columns(5)
-      k1.metric("Média ($\mu$)", f"R$ {mu:,.2f}")
-      k2.metric("Desvio Padrão ($\sigma$)", f"R$ {sigma:,.2f}")
-      k3.metric("Valor de Referência ($x$)", f"R$ {val_x:,.2f}")
-      k4.metric("Probabilidade $P(X < x)$", f"{prob_menor:.2f}%")
-      k5.metric("Probabilidade $P(X \ge x)$", f"{prob_maior:.2f}%")
-
-      st.markdown("---")
-
-      min_g = mu - 3.5 * sigma
-      max_g = mu + 3.5 * sigma
-      x_vals_sino = np.linspace(min_g, max_g, 300)
-      y_vals_sino = norm.pdf(x_vals_sino, loc=mu, scale=sigma)
-
-      fig_sino = go.Figure()
-      fig_sino.add_trace(
-          go.Scatter(
-              x=x_vals_sino,
-              y=y_vals_sino,
-              mode="lines",
-              name="Distribuição Normal",
-              line=dict(color="#1f77b4", width=3),
-          )
-      )
-
-      x_fill = x_vals_sino[x_vals_sino <= val_x]
-      y_fill = y_vals_sino[x_vals_sino <= val_x]
-      if len(x_fill) > 0:
-        fig_sino.add_trace(
-            go.Scatter(
-                x=np.concatenate([[x_fill[0]], x_fill, [x_fill[-1]]]),
-                y=np.concatenate([[0], y_fill, [0]]),
-                fill="toself",
-                fillcolor="rgba(31, 119, 180, 0.3)",
-                line=dict(color="rgba(255,255,255,0)"),
-                name=f"P(X < {val_x:,.2f}) = {prob_menor:.1f}%",
-            )
-        )
-
-      fig_sino.add_trace(
-          go.Scatter(
-              x=[val_x, val_x],
-              y=[0, norm.pdf(val_x, loc=mu, scale=sigma)],
-              mode="lines",
-              name=f"Valor x = {val_x:,.2f}",
-              line=dict(color="red", width=2, dash="dash"),
-          )
-      )
-
-      fig_sino.update_layout(
-          title=f"Curva de Sino (Norm.Dist) para {metrica_escolhida}",
-          xaxis_title="Valores",
-          yaxis_title="Densidade de Probabilidade",
-          template="plotly_white",
-          hovermode="x unified",
-      )
-
-      st.plotly_chart(fig_sino, use_container_width=True)
-
-      st.markdown("### 📋 Série Mensal Utilizada no Cálculo")
-      st.dataframe(df_serie, use_container_width=True)
-
-
-# ==================== ABA: INTELIGÊNCIA PREDITIVA & REGRESSÃO ====================
-if aba == "📈 Inteligência Preditiva & Regressão":
-  st.title("📈 Inteligência Preditiva & Modelagem Estatística")
-  # (Restante das outras abas...)
-
-  
-# ==================== ABA: INTELIGÊNCIA PREDITIVA & REGRESSÃO ====================
-if aba == "📈 Inteligência Preditiva & Regressão":
-  st.title("📈 Inteligência Preditiva & Modelagem Estatística")
-  # (Restante do código preditivo mantido igual...)
-
-    
 # ==================== ABA: AUDITORIA AVANÇADA ====================
 if aba == "🔍 Auditoria Avançada":
   st.title("🔍 Auditoria e Conformidade Financeira")
