@@ -218,9 +218,15 @@ else:
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚙️ Configurações Preditivas")
 horizonte_proj = st.sidebar.slider(
-    "Horizonte de Projeção (Meses Futuros)", 1, 12, 3
+    "Horizonte de Projeção (Meses Futuros)",
+    1,
+    12,
+    3,
+    key="slider_horizonte_proj_ia",
 )
-janela_mm = st.sidebar.slider("Janela da Média Móvel (Meses)", 2, 6, 3)
+janela_mm = st.sidebar.slider(
+    "Janela da Média Móvel (Meses)", 2, 6, 3, key="slider_janela_mm_ia"
+)
 
 
 # ==================== ABA: IA ANALYSIS ====================
@@ -338,150 +344,6 @@ if aba == "🤖 IA Analysis":
 elif aba == "🔔 Norm.Dist (Probabilidade)":
   st.title("🔔 Curva de Sino & Análise Probabilística (Norm.Dist)")
   # (Demais abas continuam integradas normalmente logo abaixo)
-
-
-# ==================== NAVEGAÇÃO LATERAL ====================
-aba = st.sidebar.radio(
-    "Navegação",
-    [
-        "🔔 Norm.Dist (Probabilidade)",
-        "📈 Inteligência Preditiva & Regressão",
-        "🔍 Auditoria Avançada",
-        "🚀 Advanced Analytics & KPIs",
-        "⚡ Advanced KPIs 2",
-        "Sophisticated Graphics",
-        "Graphics",
-        "KPIs",
-        "Dashboard",
-        "Statistics",
-        "Statistic2",
-        "Financial Analysis",
-        "🤖 IA & Assistant",
-        "Lançamentos",
-        "Cadastro",
-        "Cadastro de Categorias e Contas",
-        "Cartões de Crédito",
-        "Backup & Segurança",
-    ],
-)
-
-# ==================== PAINEL DE FILTROS PODEROSOS (GLOBAL) ====================
-st.sidebar.markdown("---")
-st.sidebar.subheader("🎛️ Filtros Poderosos Globais")
-
-df_global = st.session_state.lancamentos.copy()
-
-if not df_global.empty:
-  df_global["Data"] = pd.to_datetime(df_global["Data"], errors="coerce")
-  df_global["Valor"] = pd.to_numeric(df_global["Valor"], errors="coerce").fillna(
-      0.0
-  )
-
-  # 1. Período
-  min_date = (
-      df_global["Data"].min().date()
-      if not df_global["Data"].isna().all()
-      else pd.Timestamp.today().date()
-  )
-  max_date = (
-      df_global["Data"].max().date()
-      if not df_global["Data"].isna().all()
-      else pd.Timestamp.today().date()
-  )
-  filtro_periodo = st.sidebar.date_input(
-      "Período de Análise",
-      value=(min_date, max_date),
-      min_value=min_date,
-      max_value=max_date,
-  )
-
-  # 2. Extração de Meses Disponíveis para o Filtro Específico
-  df_global["AnoMesStr"] = df_global["Data"].dt.to_period("M").astype(str)
-  meses_disponiveis = sorted(df_global["AnoMesStr"].dropna().unique().tolist())
-
-  sel_meses = st.sidebar.multiselect(
-      "Filtrar por Meses Específicos (AAAA-MM)",
-      options=meses_disponiveis,
-      default=meses_disponiveis,
-  )
-
-  # 3. Opções dos Demais Filtros
-  status_opc = (
-      df_global["Status"].dropna().unique().tolist()
-      if "Status" in df_global.columns
-      else []
-  )
-  cenario_opc = (
-      df_global["Cenario"].dropna().unique().tolist()
-      if "Cenario" in df_global.columns
-      else []
-  )
-  tipo_opc = df_global["Tipo"].dropna().unique().tolist()
-  cat_opc = df_global["Categoria"].dropna().unique().tolist()
-  conta_opc = (
-      df_global["Conta"].dropna().unique().tolist()
-      if "Conta" in df_global.columns
-      else []
-  )
-  modo_opc = (
-      df_global["Modo Valor"].dropna().unique().tolist()
-      if "Modo Valor" in df_global.columns
-      else []
-  )
-
-  # 4. Componentes Multiselect
-  sel_status = st.sidebar.multiselect(
-      "Filtrar por Status", options=status_opc, default=status_opc
-  )
-  sel_cenario = st.sidebar.multiselect(
-      "Filtrar por Cenário (Orçado/Efetivado)",
-      options=cenario_opc,
-      default=cenario_opc,
-  )
-  sel_tipo = st.sidebar.multiselect(
-      "Filtrar por Tipo", options=tipo_opc, default=tipo_opc
-  )
-  sel_cat = st.sidebar.multiselect(
-      "Filtrar por Categoria", options=cat_opc, default=cat_opc
-  )
-  sel_conta = st.sidebar.multiselect(
-      "Filtrar por Conta", options=conta_opc, default=conta_opc
-  )
-  sel_modo = st.sidebar.multiselect(
-      "Filtrar por Modo Valor", options=modo_opc, default=modo_opc
-  )
-
-  # Aplicação da Máscara Global em todas as abas
-  mask_global = pd.Series(True, index=df_global.index)
-  if len(filtro_periodo) == 2:
-    start_d, end_d = filtro_periodo
-    mask_global &= df_global["Data"].dt.date.between(start_d, end_d)
-  if sel_meses:
-    mask_global &= df_global["AnoMesStr"].isin(sel_meses)
-  if sel_status and "Status" in df_global.columns:
-    mask_global &= df_global["Status"].isin(sel_status)
-  if sel_cenario and "Cenario" in df_global.columns:
-    mask_global &= df_global["Cenario"].isin(sel_cenario)
-  if sel_tipo:
-    mask_global &= df_global["Tipo"].isin(sel_tipo)
-  if sel_cat:
-    mask_global &= df_global["Categoria"].isin(sel_cat)
-  if sel_conta and "Conta" in df_global.columns:
-    mask_global &= df_global["Conta"].isin(sel_conta)
-  if sel_modo and "Modo Valor" in df_global.columns:
-    mask_global &= df_global["Modo Valor"].isin(sel_modo)
-
-  df_filtrado_global = df_global.drop(columns=["AnoMesStr"]).copy()
-  df_filtrado_global = df_filtrado_global[mask_global]
-else:
-  df_filtrado_global = pd.DataFrame(columns=COLUNAS_LANC)
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("⚙️ Configurações Preditivas")
-horizonte_proj = st.sidebar.slider(
-    "Horizonte de Projeção (Meses Futuros)", 1, 12, 3
-)
-janela_mm = st.sidebar.slider("Janela da Média Móvel (Meses)", 2, 6, 3)
 
 
 # ==================== ABA: NORM.DIST (PROBABILIDADE) ====================
