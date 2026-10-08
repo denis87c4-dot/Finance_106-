@@ -79,7 +79,7 @@ if "cartoes" not in st.session_state:
   ]
 
 # ==================== MENU / ABAS PRINCIPAIS ====================
-# Adicionamos "IA Analysis" logo na primeira posição
+# Definimos todas as abas do sistema em uma única lista organizada
 abas = st.tabs([
     "🤖 IA Analysis",
     "📊 Dashboard",
@@ -152,7 +152,10 @@ with abas[0]:
     ]
   else:
     df_filtrado = pd.DataFrame(columns=COLUNAS_LANC)
-    st.info("⚠️ Nenhum lançamento cadastrado no sistema ainda.")
+    st.info(
+        "⚠️ Nenhum lançamento cadastrado no sistema ainda. Cadastre alguns"
+        " lançamentos para ver as análises."
+    )
 
   st.divider()
 
@@ -180,7 +183,7 @@ with abas[0]:
     col_stat1, col_stat2 = st.columns(2)
 
     with col_stat1:
-      st.subheader("Concentração de Gastos (Pareto)")
+      st.subheader("Concentração de Gastos por Categoria")
       if not df_filtrado[df_filtrado["Tipo"] == "Despesa"].empty:
         df_desp = df_filtrado[df_filtrado["Tipo"] == "Despesa"]
         cat_gasto = (
@@ -223,21 +226,38 @@ with abas[0]:
     st.markdown("### 🧠 Resumo Inteligente da IA")
     if saldo < 0:
       st.error(
-          "⚠️ **Alerta de Déficit:** No recorte selecionado (Filtros: "
-          f"{len(meses_disponiveis)} meses / Cenário: {cenario_filtro}), as"
-          " despesas superaram as receitas. Recomenda-se auditar os maiores"
-          " centros de custo na tabela acima."
+          "⚠️ **Alerta de Déficit:** No recorte selecionado (Filtros: Mês e"
+          f" Cenário {cenario_filtro}), as despesas superaram as receitas."
+          " Recomenda-se auditar os maiores centros de custo na tabela de"
+          " categorias acima."
       )
     else:
       st.success(
           "✅ **Saúde Financeira Positiva:** O período selecionado apresenta"
-          " saldo superavitário. A gestão de caixa está controlada dentro dos"
-          " parâmetros do cenário escolhido."
+          " saldo superavitário de acordo com os filtros aplicados."
       )
   else:
     st.warning(
         "Nenhum dado encontrado para a combinação de filtros aplicada."
     )
+
+# ==================== OUTRAS ABAS DO SISTEMA ====================
+with abas[1]:
+  st.title("Dashboard Principal")
+  st.write("Gráficos e indicadores globais.")
+
+with abas[2]:
+  st.title("Gerenciamento de Lançamentos")
+  st.write("Tabela de cadastro e edição de receitas/despesas.")
+
+with abas[3]:
+  st.title("Controle de Cartões de Crédito")
+  st.write("Faturas, limites e vencimentos.")
+
+with abas[4]:
+  st.title("Configurações do Sistema")
+  st.write("Gerenciamento de contas, categorias e parâmetros.")
+
 
 # ==================== OUTRAS ABAS (EXEMPLO DE ESTRUTURA) ====================
 with abas[1]:
