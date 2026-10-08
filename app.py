@@ -133,7 +133,17 @@ if not df_global.empty:
       max_value=max_date,
   )
 
-  # 2. Opções dos Filtros
+  # 2. Extração de Meses Disponíveis para o Filtro Específico
+  df_global["AnoMesStr"] = df_global["Data"].dt.to_period("M").astype(str)
+  meses_disponiveis = sorted(df_global["AnoMesStr"].dropna().unique().tolist())
+
+  sel_meses = st.sidebar.multiselect(
+      "Filtrar por Meses Específicos (AAAA-MM)",
+      options=meses_disponiveis,
+      default=meses_disponiveis,
+  )
+
+  # 3. Opções dos Demais Filtros
   status_opc = (
       df_global["Status"].dropna().unique().tolist()
       if "Status" in df_global.columns
@@ -157,7 +167,7 @@ if not df_global.empty:
       else []
   )
 
-  # 3. Componentes Multiselect
+  # 4. Componentes Multiselect
   sel_status = st.sidebar.multiselect(
       "Filtrar por Status", options=status_opc, default=status_opc
   )
@@ -184,6 +194,8 @@ if not df_global.empty:
   if len(filtro_periodo) == 2:
     start_d, end_d = filtro_periodo
     mask_global &= df_global["Data"].dt.date.between(start_d, end_d)
+  if sel_meses:
+    mask_global &= df_global["AnoMesStr"].isin(sel_meses)
   if sel_status and "Status" in df_global.columns:
     mask_global &= df_global["Status"].isin(sel_status)
   if sel_cenario and "Cenario" in df_global.columns:
@@ -197,7 +209,8 @@ if not df_global.empty:
   if sel_modo and "Modo Valor" in df_global.columns:
     mask_global &= df_global["Modo Valor"].isin(sel_modo)
 
-  df_filtrado_global = df_global[mask_global]
+  df_filtrado_global = df_global.drop(columns=["AnoMesStr"]).copy()
+  df_filtrado_global = df_filtrado_global[mask_global]
 else:
   df_filtrado_global = pd.DataFrame(columns=COLUNAS_LANC)
 
@@ -215,8 +228,8 @@ if aba == "🔔 Norm.Dist (Probabilidade)":
   st.markdown(
       "Analise a distribuição estatística e calcule a probabilidade"
       " acumulada ($P(X < x)$) para **Income**, **Expense**, **Cash Flow** e"
-      " **Acumulado**, considerando os filtros poderosos (como Cenário Orçado"
-      " vs Efetivado, Categorias, etc.)."
+      " **Acumulado**, considerando os filtros poderosos, incluindo a"
+      " seleção específica de meses."
   )
 
   if df_filtrado_global.empty:
@@ -225,7 +238,6 @@ if aba == "🔔 Norm.Dist (Probabilidade)":
         " distribuição normal."
     )
   else:
-    # Preparação da base mensal com base nos filtros poderosos
     df_nd = df_filtrado_global.copy()
     df_nd["MesAno"] = df_nd["Data"].dt.to_period("M").dt.to_timestamp()
 
@@ -262,7 +274,6 @@ if aba == "🔔 Norm.Dist (Probabilidade)":
     df_serie["Cash_Flow"] = df_serie["Income"] - df_serie["Expense"]
     df_serie["Acumulado"] = df_serie["Cash_Flow"].cumsum()
 
-    # Seletor da métrica que o usuário quer analisar na Curva de Sino
     col_sel1, col_sel2 = st.columns([2, 2])
     with col_sel1:
       metrica_escolhida = st.selectbox(
@@ -280,14 +291,14 @@ if aba == "🔔 Norm.Dist (Probabilidade)":
 
     if len(serie_dados) < 2:
       st.warning(
-          "É necessário pelo menos 2 períodos (meses) de dados filtrados para"
+          "É necessário pelo menos 2 períodos (meses) selecionados para"
           " calcular a média e o desvio padrão da distribuição normal."
       )
     else:
       mu = serie_dados.mean()
       sigma = serie_dados.std()
       if sigma == 0:
-        sigma = 1e-5  # Evitar divisão por zero se todos os valores forem idênticos
+        sigma = 1e-5
 
       with col_sel2:
         val_x = st.number_input(
@@ -296,11 +307,9 @@ if aba == "🔔 Norm.Dist (Probabilidade)":
             step=float(max(abs(mu) * 0.05, 1.0)),
         )
 
-      # Cálculo da probabilidade acumulada P(X < x) usando norma estatística (scipy.stats.norm)
       prob_menor = norm.cdf(val_x, loc=mu, scale=sigma) * 100
       prob_maior = (1 - norm.cdf(val_x, loc=mu, scale=sigma)) * 100
 
-      # Exibição dos KPIs Estatísticos
       st.markdown("### 📊 Indicadores Estatísticos da Curva")
       k1, k2, k3, k4, k5 = st.columns(5)
       k1.metric("Média ($\mu$)", f"R$ {mu:,.2f}")
@@ -311,15 +320,12 @@ if aba == "🔔 Norm.Dist (Probabilidade)":
 
       st.markdown("---")
 
-      # Construção do Gráfico de Sino (Curva Normal)
       min_g = mu - 3.5 * sigma
       max_g = mu + 3.5 * sigma
       x_vals_sino = np.linspace(min_g, max_g, 300)
       y_vals_sino = norm.pdf(x_vals_sino, loc=mu, scale=sigma)
 
       fig_sino = go.Figure()
-
-      # Curva inteira
       fig_sino.add_trace(
           go.Scatter(
               x=x_vals_sino,
@@ -330,7 +336,6 @@ if aba == "🔔 Norm.Dist (Probabilidade)":
           )
       )
 
-      # Área preenchida para P(X < x)
       x_fill = x_vals_sino[x_vals_sino <= val_x]
       y_fill = y_vals_sino[x_vals_sino <= val_x]
       if len(x_fill) > 0:
@@ -345,7 +350,6 @@ if aba == "🔔 Norm.Dist (Probabilidade)":
             )
         )
 
-      # Linha vertical indicando o X escolhido
       fig_sino.add_trace(
           go.Scatter(
               x=[val_x, val_x],
@@ -370,6 +374,12 @@ if aba == "🔔 Norm.Dist (Probabilidade)":
       st.dataframe(df_serie, use_container_width=True)
 
 
+# ==================== ABA: INTELIGÊNCIA PREDITIVA & REGRESSÃO ====================
+if aba == "📈 Inteligência Preditiva & Regressão":
+  st.title("📈 Inteligência Preditiva & Modelagem Estatística")
+  # (Restante das outras abas...)
+
+  
 # ==================== ABA: INTELIGÊNCIA PREDITIVA & REGRESSÃO ====================
 if aba == "📈 Inteligência Preditiva & Regressão":
   st.title("📈 Inteligência Preditiva & Modelagem Estatística")
