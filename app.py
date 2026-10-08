@@ -78,203 +78,148 @@ if "cartoes" not in st.session_state:
       },
   ]
 
-# ==================== MENU / ABAS PRINCIPAIS ====================
-# Definimos todas as abas do sistema em uma única lista organizada
-abas = st.tabs([
-    "🤖 IA Analysis",
-    "📊 Dashboard",
-    "📝 Lançamentos",
-    "💳 Cartões",
-    "⚙️ Configurações",
-])
+# ==================== NAVEGAÇÃO LATERAL ====================
+aba = st.sidebar.radio(
+    "Navegação",
+    [
+        "🔔 Norm.Dist (Probabilidade)",
+        "📈 Inteligência Preditiva & Regressão",
+        "🔍 Auditoria Avançada",
+        "🚀 Advanced Analytics & KPIs",
+        "⚡ Advanced KPIs 2",
+        "Sophisticated Graphics",
+        "Graphics",
+        "KPIs",
+        "Dashboard",
+        "Statistics",
+        "Statistic2",
+        "Financial Analysis",
+        "🤖 IA & Assistant",
+        "Lançamentos",
+        "Cadastro",
+        "Cadastro de Categorias e Contas",
+        "Cartões de Crédito",
+        "Backup & Segurança",
+    ],
+)
 
-# ==================== ABA 0: IA ANALYSIS ====================
-with abas[0]:
-  st.title("🤖 IA Analysis & Insights Financeiros")
-  st.markdown(
-      "Análise automatizada baseada em estatística e finanças, adaptada em"
-      " tempo real aos filtros selecionados."
+# ==================== PAINEL DE FILTROS PODEROSOS (GLOBAL) ====================
+st.sidebar.markdown("---")
+st.sidebar.subheader("🎛️ Filtros Poderosos Globais")
+
+df_global = st.session_state.lancamentos.copy()
+
+if not df_global.empty:
+  df_global["Data"] = pd.to_datetime(df_global["Data"], errors="coerce")
+  df_global["Valor"] = pd.to_numeric(df_global["Valor"], errors="coerce").fillna(
+      0.0
   )
 
-  # --- Filtros Poderosos Específicos para a Análise ---
-  st.markdown("### 🎛️ Filtros da Análise")
-  col_f1, col_f2, col_f3 = st.columns(3)
+  # 1. Período
+  min_date = (
+      df_global["Data"].min().date()
+      if not df_global["Data"].isna().all()
+      else pd.Timestamp.today().date()
+  )
+  max_date = (
+      df_global["Data"].max().date()
+      if not df_global["Data"].isna().all()
+      else pd.Timestamp.today().date()
+  )
+  filtro_periodo = st.sidebar.date_input(
+      "Período de Análise",
+      value=(min_date, max_date),
+      min_value=min_date,
+      max_value=max_date,
+  )
 
-  df_analise = st.session_state.lancamentos.copy()
+  # 2. Extração de Meses Disponíveis para o Filtro Específico
+  df_global["AnoMesStr"] = df_global["Data"].dt.to_period("M").astype(str)
+  meses_disponiveis = sorted(df_global["AnoMesStr"].dropna().unique().tolist())
 
-  if not df_analise.empty:
-    # Garantir formato datetime na coluna Data
-    df_analise["Data"] = pd.to_datetime(df_analise["Data"], errors="coerce")
-    df_analise["Mes_Ano"] = df_analise["Data"].dt.strftime("%Y-%m")
+  sel_meses = st.sidebar.multiselect(
+      "Filtrar por Meses Específicos (AAAA-MM)",
+      options=meses_disponiveis,
+      default=meses_disponiveis,
+  )
 
-    # Filtro 1: Cenário (Budget vs Efetivado)
-    cenarios_disponiveis = (
-        df_analise["Cenario"].dropna().unique().tolist()
-        if "Cenario" in df_analise.columns
-        else ["Efetivado"]
-    )
-    with col_f1:
-      cenario_filtro = st.multiselect(
-          "Filtrar Cenário",
-          options=cenarios_disponiveis,
-          default=cenarios_disponiveis,
-      )
+  # 3. Opções dos Demais Filtros
+  status_opc = (
+      df_global["Status"].dropna().unique().tolist()
+      if "Status" in df_global.columns
+      else []
+  )
+  cenario_opc = (
+      df_global["Cenario"].dropna().unique().tolist()
+      if "Cenario" in df_global.columns
+      else []
+  )
+  tipo_opc = df_global["Tipo"].dropna().unique().tolist()
+  cat_opc = df_global["Categoria"].dropna().unique().tolist()
+  conta_opc = (
+      df_global["Conta"].dropna().unique().tolist()
+      if "Conta" in df_global.columns
+      else []
+  )
+  modo_opc = (
+      df_global["Modo Valor"].dropna().unique().tolist()
+      if "Modo Valor" in df_global.columns
+      else []
+  )
 
-    # Filtro 2: Mês/Ano
-    meses_disponiveis = sorted(
-        df_analise["Mes_Ano"].dropna().unique().tolist()
-    )
-    with col_f2:
-      mes_filtro = st.multiselect(
-          "Filtrar Mês (AAAA-MM)",
-          options=meses_disponiveis,
-          default=meses_disponiveis,
-      )
+  # 4. Componentes Multiselect
+  sel_status = st.sidebar.multiselect(
+      "Filtrar por Status", options=status_opc, default=status_opc
+  )
+  sel_cenario = st.sidebar.multiselect(
+      "Filtrar por Cenário (Orçado/Efetivado)",
+      options=cenario_opc,
+      default=cenario_opc,
+  )
+  sel_tipo = st.sidebar.multiselect(
+      "Filtrar por Tipo", options=tipo_opc, default=tipo_opc
+  )
+  sel_cat = st.sidebar.multiselect(
+      "Filtrar por Categoria", options=cat_opc, default=cat_opc
+  )
+  sel_conta = st.sidebar.multiselect(
+      "Filtrar por Conta", options=conta_opc, default=conta_opc
+  )
+  sel_modo = st.sidebar.multiselect(
+      "Filtrar por Modo Valor", options=modo_opc, default=modo_opc
+  )
 
-    # Filtro 3: Tipo (Receita vs Despesa)
-    tipos_disponiveis = (
-        df_analise["Tipo"].dropna().unique().tolist()
-        if "Tipo" in df_analise.columns
-        else []
-    )
-    with col_f3:
-      tipo_filtro = st.multiselect(
-          "Filtrar Tipo",
-          options=tipos_disponiveis,
-          default=tipos_disponiveis,
-      )
+  # Aplicação da Máscara Global em todas as abas
+  mask_global = pd.Series(True, index=df_global.index)
+  if len(filtro_periodo) == 2:
+    start_d, end_d = filtro_periodo
+    mask_global &= df_global["Data"].dt.date.between(start_d, end_d)
+  if sel_meses:
+    mask_global &= df_global["AnoMesStr"].isin(sel_meses)
+  if sel_status and "Status" in df_global.columns:
+    mask_global &= df_global["Status"].isin(sel_status)
+  if sel_cenario and "Cenario" in df_global.columns:
+    mask_global &= df_global["Cenario"].isin(sel_cenario)
+  if sel_tipo:
+    mask_global &= df_global["Tipo"].isin(sel_tipo)
+  if sel_cat:
+    mask_global &= df_global["Categoria"].isin(sel_cat)
+  if sel_conta and "Conta" in df_global.columns:
+    mask_global &= df_global["Conta"].isin(sel_conta)
+  if sel_modo and "Modo Valor" in df_global.columns:
+    mask_global &= df_global["Modo Valor"].isin(sel_modo)
 
-    # Aplicando os filtros no DataFrame
-    df_filtrado = df_analise[
-        df_analise["Cenario"].isin(cenario_filtro)
-        & df_analise["Mes_Ano"].isin(mes_filtro)
-        & df_analise["Tipo"].isin(tipo_filtro)
-    ]
-  else:
-    df_filtrado = pd.DataFrame(columns=COLUNAS_LANC)
-    st.info(
-        "⚠️ Nenhum lançamento cadastrado no sistema ainda. Cadastre alguns"
-        " lançamentos para ver as análises."
-    )
+  df_filtrado_global = df_global.drop(columns=["AnoMesStr"]).copy()
+  df_filtrado_global = df_filtrado_global[mask_global]
+else:
+  df_filtrado_global = pd.DataFrame(columns=COLUNAS_LANC)
 
-  st.divider()
-
-  # --- Painel de Indicadores e Insights ---
-  if not df_filtrado.empty:
-    receitas = df_filtrado[df_filtrado["Tipo"] == "Receita"]["Valor"].sum()
-    despesas = df_filtrado[df_filtrado["Tipo"] == "Despesa"]["Valor"].sum()
-    saldo = receitas - despesas
-
-    # Métricas Principais
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Receitas Filtradas", f"R$ {receitas:,.2f}")
-    m2.metric(
-        "Despesas Filtradas",
-        f"R$ {despesas:,.2f}",
-        delta=f"{(despesas/receitas)*100:.1f}% da receita"
-        if receitas > 0
-        else None,
-        delta_inverse=True,
-    )
-    m3.metric("Resultado (Saldo)", f"R$ {saldo:,.2f}", delta=f"R$ {saldo:,.2f}")
-
-    st.markdown("### 📊 Diagnóstico Estatístico & Financeiro")
-
-    col_stat1, col_stat2 = st.columns(2)
-
-    with col_stat1:
-      st.subheader("Concentração de Gastos por Categoria")
-      if not df_filtrado[df_filtrado["Tipo"] == "Despesa"].empty:
-        df_desp = df_filtrado[df_filtrado["Tipo"] == "Despesa"]
-        cat_gasto = (
-            df_desp.groupby("Categoria")["Valor"].sum().reset_index()
-        )
-        cat_gasto = cat_gasto.sort_values(by="Valor", ascending=False)
-        st.dataframe(cat_gasto, use_container_width=True, hide_index=True)
-      else:
-        st.write("Sem dados de despesa para o filtro selecionado.")
-
-    with col_stat2:
-      st.subheader("Estatísticas Descritivas dos Valores")
-      valores_serie = df_filtrado["Valor"].dropna()
-      if not valores_serie.empty:
-        stats_df = pd.DataFrame({
-            "Métrica": [
-                "Média",
-                "Mediana",
-                "Desvio Padrão",
-                "Valor Máximo",
-                "Valor Mínimo",
-            ],
-            "R$": [
-                valores_serie.mean(),
-                valores_serie.median(),
-                valores_serie.std(),
-                valores_serie.max(),
-                valores_serie.min(),
-            ],
-        })
-        st.dataframe(
-            stats_df.style.format({"R$": "R$ {:,.2f}"}),
-            use_container_width=True,
-            hide_index=True,
-        )
-      else:
-        st.write("Sem valores numéricos suficientes.")
-
-    # Bloco de Análise Narrativa Automatizada
-    st.markdown("### 🧠 Resumo Inteligente da IA")
-    if saldo < 0:
-      st.error(
-          "⚠️ **Alerta de Déficit:** No recorte selecionado (Filtros: Mês e"
-          f" Cenário {cenario_filtro}), as despesas superaram as receitas."
-          " Recomenda-se auditar os maiores centros de custo na tabela de"
-          " categorias acima."
-      )
-    else:
-      st.success(
-          "✅ **Saúde Financeira Positiva:** O período selecionado apresenta"
-          " saldo superavitário de acordo com os filtros aplicados."
-      )
-  else:
-    st.warning(
-        "Nenhum dado encontrado para a combinação de filtros aplicada."
-    )
-
-# ==================== OUTRAS ABAS DO SISTEMA ====================
-with abas[1]:
-  st.title("Dashboard Principal")
-  st.write("Gráficos e indicadores globais.")
-
-with abas[2]:
-  st.title("Gerenciamento de Lançamentos")
-  st.write("Tabela de cadastro e edição de receitas/despesas.")
-
-with abas[3]:
-  st.title("Controle de Cartões de Crédito")
-  st.write("Faturas, limites e vencimentos.")
-
-with abas[4]:
-  st.title("Configurações do Sistema")
-  st.write("Gerenciamento de contas, categorias e parâmetros.")
-
-
-# ==================== OUTRAS ABAS (EXEMPLO DE ESTRUTURA) ====================
-with abas[1]:
-  st.title("Dashboard Principal")
-  st.write("Seus gráficos e indicadores globais entram aqui.")
-
-with abas[2]:
-  st.title("Gerenciamento de Lançamentos")
-  st.write("Tabela de cadastro e edição de receitas/despesas.")
-
-with abas[3]:
-  st.title("Controle de Cartões de Crédito")
-  st.write("Faturas, limites e vencimentos.")
-
-with abas[4]:
-  st.title("Configurações do Sistema")
-  st.write("Gerenciamento de contas, categorias e parâmetros.")
+st.sidebar.markdown("---")
+st.sidebar.subheader("⚙️ Configurações Preditivas")
+horizonte_proj = st.sidebar.slider(
+    "Horizonte de Projeção (Meses Futuros)", 1, 12, 3
+)
+janela_mm = st.sidebar.slider("Janela da Média Móvel (Meses)", 2, 6, 3)
 
 
 # ==================== ABA: NORM.DIST (PROBABILIDADE) ====================
