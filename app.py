@@ -82,7 +82,6 @@ if "cartoes" not in st.session_state:
 aba = st.sidebar.radio(
     "Navegação",
     [
-        "🤖 IA Analysis",
         "🔔 Norm.Dist (Probabilidade)",
         "📈 Inteligência Preditiva & Regressão",
         "🔍 Auditoria Avançada",
@@ -218,132 +217,9 @@ else:
 st.sidebar.markdown("---")
 st.sidebar.subheader("⚙️ Configurações Preditivas")
 horizonte_proj = st.sidebar.slider(
-    "Horizonte de Projeção (Meses Futuros)",
-    1,
-    12,
-    3,
-    key="slider_horizonte_proj_ia",
+    "Horizonte de Projeção (Meses Futuros)", 1, 12, 3
 )
-janela_mm = st.sidebar.slider(
-    "Janela da Média Móvel (Meses)", 2, 6, 3, key="slider_janela_mm_ia"
-)
-
-
-# ==================== ABA: IA ANALYSIS ====================
-if aba == "🤖 IA Analysis":
-  st.title("🤖 IA Analysis & Dossiê Financeiro Inteligente")
-  st.markdown(
-      "Painel executivo gerado automaticamente considerando o recorte dos"
-      " **Filtros Poderosos** ativos na barra lateral."
-  )
-
-  if df_filtrado_global.empty:
-    st.info(
-        "📝 O sistema está sem dados ou nenhum lançamento corresponde ao"
-        " recorte atual dos filtros globais. Você ainda pode explorar o"
-        " **Glossário Estatístico** abaixo tranquilamente!"
-    )
-  else:
-    df_ia = df_filtrado_global.copy()
-
-    tot_reg = len(df_ia)
-    rec_val = df_ia.loc[
-        df_ia["Tipo"].str.lower().str.contains("receita|income", na=False),
-        "Valor",
-    ].sum()
-    esp_val = df_ia.loc[
-        df_ia["Tipo"].str.lower().str.contains("despesa|expense", na=False),
-        "Valor",
-    ].sum()
-    saldo_liq = rec_val - esp_val
-
-    st.subheader(
-        "📌 Resumo Executivo Integrado (Baseado nos Filtros da Barra Lateral)"
-    )
-
-    col_a, col_b, col_c, col_d = st.columns(4)
-    col_a.metric("Registros no Recorte", f"{tot_reg:,}")
-    col_b.metric("Total Receitas", f"R$ {rec_val:,.2f}")
-    col_c.metric("Total Despesas", f"R$ {esp_val:,.2f}")
-    col_d.metric("Saldo Líquido", f"R$ {saldo_liq:,.2f}")
-
-    st.markdown("---")
-    st.markdown("### 📝 Dossiê Comportamental do Recorte")
-
-    status_txt = (
-        "Superávit (Saudável)"
-        if saldo_liq >= 0
-        else "Déficit (Atenção Necessária)"
-    )
-    taxa_ret = (
-        (saldo_liq / rec_val * 100)
-        if rec_val > 0
-        else (0.0 if saldo_liq >= 0 else -100.0)
-    )
-
-    df_despesas = df_ia[
-        df_ia["Tipo"].str.lower().str.contains("despesa|expense", na=False)
-    ]
-    if not df_despesas.empty and "Categoria" in df_despesas.columns:
-      cat_top = (
-          df_despesas.groupby("Categoria")["Valor"]
-          .sum()
-          .reset_index()
-          .sort_values(by="Valor", ascending=False)
-      )
-      maior_gasto_cat = cat_top.iloc[0]["Categoria"]
-      maior_gasto_val = cat_top.iloc[0]["Valor"]
-      info_maior_gasto = f"* **Principal Foco de Despesa:** A categoria **{maior_gasto_cat}** lidera os gastos neste recorte, somando **R$ {maior_gasto_val:,.2f}**."
-    else:
-      info_maior_gasto = (
-          "* **Principal Foco de Despesa:** Sem dados suficientes de despesa"
-          " por categoria no recorte atual."
-      )
-
-    st.success(
-        f"""
-        * **Situação do Recorte Selecionado:** O cenário filtrado encontra-se em **{status_txt}**.
-        * **Taxa de Retenção / Poupança:** Representa **{taxa_ret:.2f}%** das entradas capturadas pelos filtros ativos.
-        {info_maior_gasto}
-        """
-    )
-
-  st.markdown("---")
-  st.subheader(
-      "📖 Guia Explicativo: Significado dos Termos Estatísticos do Sistema"
-  )
-
-  with st.expander("📊 O que é Média ($\mu$) e Desvio Padrão ($\sigma$)?"):
-    st.markdown(
-        """
-        * **Média ($\mu$):** É o valor central ou esperado de uma série (por exemplo, quanto você costuma gastar ou arrecadar mensalmente).
-        * **Desvio Padrão ($\sigma$):** Mede a **volatilidade**. Se for alto, significa que os valores oscilam bruscamente de um mês para o outro; se for baixo, indica estabilidade e previsibilidade nas suas finanças.
-        """
-    )
-
-  with st.expander(
-      "🔔 O que é a Curva de Sino e Probabilidade Acumulada ($P(X < x)$)?"
-  ):
-    st.markdown(
-        """
-        * **Curva de Sino (Distribuição Normal):** Modelo estatístico que mapeia a probabilidade dos seus resultados financeiros mês a mês.
-        * **Probabilidade Acumulada $P(X < x)$:** Informa a chance percentual de que o resultado de um determinado mês fique **abaixo** de um valor de referência $x$ que você definir na aba de probabilidade.
-        """
-    )
-
-  with st.expander("📈 O que são as Regressões e a Média Móvel?"):
-    st.markdown(
-        """
-        * **Regressão Linear / Exponencial / Logarítmica:** Ferramentas estatísticas que traçam tendências ao longo do tempo para prever se as finanças estão numa trajetória de alta ou baixa.
-        * **Média Móvel:** Calcula a média de uma janela de meses consecutivos (ex: últimos 3 meses) para eliminar ruídos e mostrar a real tendência do seu fluxo de caixa.
-        """
-    )
-
-
-# ==================== ABA: NORM.DIST (PROBABILIDADE) ====================
-elif aba == "🔔 Norm.Dist (Probabilidade)":
-  st.title("🔔 Curva de Sino & Análise Probabilística (Norm.Dist)")
-  # (Demais abas continuam integradas normalmente logo abaixo)
+janela_mm = st.sidebar.slider("Janela da Média Móvel (Meses)", 2, 6, 3)
 
 
 # ==================== ABA: NORM.DIST (PROBABILIDADE) ====================
