@@ -1,8 +1,0 @@
-streamlit
-pandas
-numpy
-plotly
-scipy
-openpyxl
-numpy-financial
-google-generativeai

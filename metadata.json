@@ -1,0 +1,8 @@
+{
+  "name": "Finance 106 - Financial Manager",
+  "description": "Professional financial management suite featuring executive cash flow dashboards, normal distribution analysis, advanced econometric & statistical KPIs, audit controls, budget tracking, and intelligent AI forecasting.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
