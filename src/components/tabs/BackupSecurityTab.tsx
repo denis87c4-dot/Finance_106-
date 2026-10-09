@@ -36,7 +36,7 @@ export const BackupSecurityTab: React.FC = () => {
   };
 
   const downloadCSV = () => {
-    const headers = ['id', 'tipo', 'conta', 'contaDestino', 'categoria', 'descricao', 'valor', 'data', 'parcelas', 'status', 'cenario'];
+    const headers = ['id', 'tipo', 'conta', 'contaDestino', 'categoria', 'descricao', 'valor', 'data', 'dataPagamento', 'parcelas', 'status', 'cenario'];
     const rows = transactions.map(t => [
       t.id,
       t.tipo,
@@ -46,6 +46,7 @@ export const BackupSecurityTab: React.FC = () => {
       `"${t.descricao.replace(/"/g, '""')}"`,
       t.valor,
       t.data,
+      t.dataPagamento || t.data,
       t.parcelas,
       t.status,
       t.cenario

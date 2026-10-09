@@ -10,7 +10,8 @@ export interface Transaction {
   categoria: string;
   descricao: string;
   valor: number;
-  data: string; // YYYY-MM-DD
+  data: string; // YYYY-MM-DD (Data da Compra / Competência)
+  dataPagamento?: string; // YYYY-MM-DD (Data de Pagamento / Vencimento da Fatura)
   parcelas: string; // e.g. "1/1", "1/12"
   modoValor: string; // "À vista" | "A prazo"
   status: TransactionStatus;

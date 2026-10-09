@@ -197,6 +197,7 @@ export const FinanceProvider: React.FC<{ children: React.ReactNode }> = ({ child
         descricao: l.Descrição || l.descricao || 'Sem descrição',
         valor: Math.abs(Number(l.Valor || l.valor || 0)),
         data: (l.Data || l.data || new Date().toISOString().split('T')[0]).substring(0, 10),
+        dataPagamento: (l.dataPagamento || l['Data Pagamento'] || l['Data de Pagamento'] || l.Data || l.data || '').substring(0, 10),
         parcelas: l.Parcelas || l.parcelas || '1/1',
         modoValor: l['Modo Valor'] || l.modoValor || 'À vista',
         status: (l.Status || l.status || 'Efetivado') as any,
